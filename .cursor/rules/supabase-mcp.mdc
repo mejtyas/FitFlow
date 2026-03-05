@@ -1,0 +1,12 @@
+---
+description: Always use Supabase MCP tools; FitFlow project is the default
+alwaysApply: true
+---
+
+# Supabase MCP
+
+- **Always use the Supabase MCP tools** when the task involves the database, project config, migrations, Edge Functions, or Supabase docs. Prefer MCP over guessing or hand-written config.
+- **Default project**: FitFlow  
+  - **Project ID**: `vqkfywqsjimgvaudtvdx`  
+  Use this `project_id` for `execute_sql`, `list_tables`, `apply_migration`, `get_project_url`, `get_publishable_keys`, and any other Supabase tool that requires a project.
+- When you need the project URL or keys (e.g. for `.env`), call `get_project_url` and `get_publishable_keys` with the FitFlow project ID instead of hardcoding.
