@@ -104,7 +104,7 @@ export default async function ActiveWorkoutPage({
 
   const w = session.workouts as { name: string } | { name: string }[] | null;
   const workoutName =
-    (Array.isArray(w) ? w[0]?.name : w?.name) ?? "Freestyle";
+    (Array.isArray(w) ? w[0]?.name : w?.name) ?? "Unnamed Session";
 
   return (
     <ActiveWorkoutView

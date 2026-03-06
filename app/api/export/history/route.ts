@@ -70,7 +70,7 @@ export async function GET(request: Request) {
 
   for (const session of sessions) {
     const w = session.workouts as { name: string } | { name: string }[] | null;
-    const workoutName = (Array.isArray(w) ? w[0]?.name : w?.name) ?? "Freestyle";
+    const workoutName = (Array.isArray(w) ? w[0]?.name : w?.name) ?? "Unnamed Session";
     const started = new Date(session.started_at).getTime();
     const ended = session.ended_at ? new Date(session.ended_at).getTime() : started;
     const durationMin = ((ended - started) / 60000).toFixed(1);

@@ -5,7 +5,11 @@ import { createWorkoutSession } from "@/lib/create-workout-session";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const workoutId = searchParams.get("freestyle") ? null : searchParams.get("workout") ?? null;
+  const workoutId = searchParams.get("workout") ?? null;
+
+  if (!workoutId) {
+    return NextResponse.redirect(new URL("/dashboard?error=" + encodeURIComponent("Please select a workout routine"), request.url));
+  }
 
   const supabase = await createClient();
   const {

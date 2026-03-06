@@ -39,7 +39,7 @@ export default async function HistoryDetailPage({
     .order("order_index");
 
   const w = session.workouts as { name: string } | { name: string }[] | null;
-  const workoutName = (Array.isArray(w) ? w[0]?.name : w?.name) ?? "Freestyle";
+  const workoutName = (Array.isArray(w) ? w[0]?.name : w?.name) ?? "Unnamed Session";
   const durationMs =
     new Date(session.ended_at).getTime() - new Date(session.started_at).getTime();
   const totalSeconds = Math.floor(durationMs / 1000);

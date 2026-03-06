@@ -28,7 +28,7 @@ export default async function DashboardPage() {
   const activeWorkoutName = hasActiveSession 
     ? (Array.isArray(activeSession.workouts) 
         ? (activeSession.workouts as any)[0]?.name 
-        : (activeSession.workouts as any)?.name) ?? "Freestyle"
+        : (activeSession.workouts as any)?.name) ?? "Unnamed Session"
     : null;
 
   // 2. Get last completed session
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   const lastWorkoutName = lastSession 
     ? (Array.isArray(lastSession.workouts) 
         ? (lastSession.workouts as any)[0]?.name 
-        : (lastSession.workouts as any)?.name) ?? "Freestyle"
+        : (lastSession.workouts as any)?.name) ?? "Unnamed Session"
     : null;
 
   // 3. Get workout count for the last 7 days
@@ -177,21 +177,11 @@ export default async function DashboardPage() {
           </h2>
           
           <Card className="border-none shadow-xl shadow-primary/5 bg-gradient-to-br from-card to-muted/20 relative">
-            <CardContent className="p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-4 relative">
-              <Button asChild size="lg" className="w-full sm:w-auto px-8 h-12 font-bold rounded-2xl shadow-lg shadow-primary/20 group relative overflow-hidden shrink-0">
-                <Link href="/dashboard/start?freestyle=1" className="flex items-center justify-center gap-2">
-                  <Plus className="size-5 group-hover:rotate-90 transition-transform duration-300" />
-                  Empty Workout
-                </Link>
-              </Button>
-
-              <div className="hidden sm:block h-8 w-px bg-border/50 shrink-0" />
-              <div className="sm:hidden w-full h-px bg-border/50 shrink-0" />
-
-              <div className="flex-1 w-full">
+            <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-4 relative">
+              <div className="flex-1 w-full max-w-md">
                 <WorkoutSelector workouts={workouts} />
                 {(!workouts || workouts.length === 0) && (
-                  <p className="mt-2 text-[10px] text-center sm:text-left text-muted-foreground font-medium italic">
+                  <p className="mt-2 text-[10px] text-center text-muted-foreground font-medium italic">
                     No routines found. <Link href="/workouts" className="text-primary hover:underline">Create one</Link>
                   </p>
                 )}

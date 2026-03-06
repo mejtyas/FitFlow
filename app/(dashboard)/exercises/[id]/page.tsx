@@ -160,7 +160,7 @@ export default async function ExerciseDetailPage({
               });
               
               const workouts = session.workouts;
-              const workoutName = (Array.isArray(workouts) ? workouts[0]?.name : workouts?.name) || "Freestyle Session";
+              const workoutName = (Array.isArray(workouts) ? workouts[0]?.name : workouts?.name) || "Custom Session";
 
               return (
                 <Card key={h.id} className="overflow-hidden border-muted/60 hover:border-primary/50 transition-all group">

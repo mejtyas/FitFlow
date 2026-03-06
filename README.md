@@ -34,7 +34,7 @@ Open [http://localhost:3000](http://localhost:3000). Sign up or log in, then use
 - **Auth**: Email/password sign up and sign in; protected routes.
 - **Exercises**: Create and manage your own exercise list (no premade list).
 - **Workouts**: Build workouts from your exercises (order + default sets per exercise).
-- **Dashboard**: Start a workout (pick one or Freestyle); timer runs from DB `started_at` (persists across refresh/close). Log KG and reps per set; add sets or exercises on the fly; end workout to save.
+- **Dashboard**: Start a workout from your routines; timer runs from DB `started_at` (persists across refresh/close). Log KG and reps per set; add sets or exercises on the fly; end workout to save.
 - **History**: List past workouts with duration; open one for exercise/set details; export all history as CSV or XLSX.
 - **Stats**: Total workouts, total time, most used exercises.
 - **robots.txt**: Disallows indexing.

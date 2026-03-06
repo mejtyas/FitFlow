@@ -159,7 +159,7 @@ export default async function HistoryPage() {
                   <HistoryItem
                     key={s.id}
                     sessionId={s.id}
-                    workoutName={(Array.isArray(s.workouts) ? (s.workouts as { name: string }[])[0]?.name : (s.workouts as { name: string } | null)?.name) ?? "Freestyle"}
+                    workoutName={(Array.isArray(s.workouts) ? (s.workouts as { name: string }[])[0]?.name : (s.workouts as { name: string } | null)?.name) ?? "Unnamed Session"}
                     dateStr={formatDate(s.started_at)}
                     durationStr={formatDuration(s.started_at, s.ended_at)}
                   />
