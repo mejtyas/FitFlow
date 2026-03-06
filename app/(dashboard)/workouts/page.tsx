@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Plus, ListOrdered, Trash2, Edit2, ChevronRight, Dumbbell, Calendar } from "lucide-react";
 import { deleteWorkout } from "@/app/actions/workouts";
+import { StartWorkoutButton } from "@/components/start-workout-button";
 
 export default async function WorkoutsPage() {
   const supabase = await createClient();
@@ -110,12 +111,7 @@ export default async function WorkoutsPage() {
                       Edit
                     </Link>
                   </Button>
-                  <Button asChild className="flex-1 font-bold rounded-lg group/start shadow-sm shadow-primary/10">
-                    <Link href={`/dashboard/start?workout=${w.id}`}>
-                      Start
-                      <ChevronRight className="ml-1 size-4 group-hover/start:translate-x-1 transition-transform" />
-                    </Link>
-                  </Button>
+                  <StartWorkoutButton workoutId={w.id} />
                 </CardFooter>
               </Card>
             );

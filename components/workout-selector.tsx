@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ListOrdered, ChevronDown, Check } from "lucide-react";
+import { ListOrdered, ChevronDown, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { startWorkout } from "@/app/actions/workout-session";
 
 interface WorkoutSelectorProps {
   workouts: { id: string; name: string }[] | null;
@@ -13,6 +14,7 @@ interface WorkoutSelectorProps {
 export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<{ id: string; name: string } | null>(null);
+  const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -26,9 +28,24 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (selectedWorkout) {
-      router.push(`/dashboard/start?workout=${selectedWorkout.id}`);
+      try {
+        setLoading(true);
+        const result = await startWorkout(selectedWorkout.id);
+        
+        if ("error" in result) {
+          console.error(result.error);
+          return;
+        }
+
+        router.push(`/dashboard/active?session=${result.sessionId}`);
+        router.refresh();
+      } catch (error) {
+        console.error("Failed to start workout:", error);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -85,12 +102,18 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
 
       <Button 
         onClick={handleStart}
-        disabled={!selectedWorkout}
+        disabled={!selectedWorkout || loading}
         variant="secondary" 
         className="h-12 rounded-2xl px-6 font-bold shadow-sm shrink-0 group disabled:opacity-50 transition-all active:scale-95"
       >
-        Start
-        <ChevronDown className="ml-1 size-4 -rotate-90 group-hover:translate-x-1 transition-transform" />
+        {loading ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <>
+            Start
+            <ChevronDown className="ml-1 size-4 -rotate-90 group-hover:translate-x-1 transition-transform" />
+          </>
+        )}
       </Button>
     </div>
   );
