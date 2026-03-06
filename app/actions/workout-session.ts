@@ -233,14 +233,14 @@ export async function deleteCompletedWorkoutHistory() {
   return {};
 }
 
-export async function deleteAllWorkoutHistory() {
+export async function deleteAllUserData() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  // Get all session IDs for this user
+  // 1. Get all session IDs for this user
   const { data: sessions } = await supabase
     .from("workout_sessions")
     .select("id")
@@ -249,7 +249,7 @@ export async function deleteAllWorkoutHistory() {
   const sessionIds = (sessions ?? []).map((s) => s.id);
 
   if (sessionIds.length > 0) {
-    // Get all session exercise IDs for these sessions
+    // 2. Get all session exercise IDs for these sessions
     const { data: sessionExercises } = await supabase
       .from("session_exercises")
       .select("id")
@@ -257,18 +257,37 @@ export async function deleteAllWorkoutHistory() {
 
     const seIds = (sessionExercises ?? []).map((se) => se.id);
     if (seIds.length > 0) {
-      // Delete sets first
+      // 3. Delete sets first
       await supabase.from("session_sets").delete().in("session_exercise_id", seIds);
     }
-    // Delete exercises
+    // 4. Delete session exercises
     await supabase.from("session_exercises").delete().in("workout_session_id", sessionIds);
-    // Delete sessions
-    await supabase.from("workout_sessions").delete().eq("user_id", user.id);
   }
+  // 5. Delete sessions
+  await supabase.from("workout_sessions").delete().eq("user_id", user.id);
+
+  // 6. Delete workout_exercises (linked to workouts)
+  const { data: userWorkouts } = await supabase
+    .from("workouts")
+    .select("id")
+    .eq("user_id", user.id);
+  
+  const workoutIds = (userWorkouts ?? []).map(w => w.id);
+  if (workoutIds.length > 0) {
+    await supabase.from("workout_exercises").delete().in("workout_id", workoutIds);
+    // 7. Delete workouts
+    await supabase.from("workouts").delete().eq("user_id", user.id);
+  }
+
+  // 8. Delete exercises (these might be used in other users' workouts if public, 
+  // but based on the schema and actions they have user_id, so they are user-specific)
+  await supabase.from("exercises").delete().eq("user_id", user.id);
 
   revalidatePath("/dashboard");
   revalidatePath("/history");
   revalidatePath("/stats");
   revalidatePath("/dashboard/active");
+  revalidatePath("/workouts");
+  revalidatePath("/exercises");
   return {};
 }

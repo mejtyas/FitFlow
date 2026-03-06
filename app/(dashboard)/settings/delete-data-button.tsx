@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { deleteAllWorkoutHistory } from "@/app/actions/workout-session";
+import { deleteAllUserData } from "@/app/actions/workout-session";
 import { Button } from "@/components/ui/button";
 import { Trash2, AlertTriangle, Loader2 } from "lucide-react";
 
-export function DeleteHistoryButton() {
+export function DeleteDataButton() {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const router = useRouter();
@@ -14,13 +14,13 @@ export function DeleteHistoryButton() {
   const handleDelete = async () => {
     setLoading(true);
     try {
-      await deleteAllWorkoutHistory();
+      await deleteAllUserData();
       setConfirmOpen(false);
       router.refresh();
-      alert("Workout history deleted successfully.");
+      alert("All data deleted successfully.");
     } catch (error) {
-      console.error("Failed to delete history:", error);
-      alert("An error occurred while deleting history.");
+      console.error("Failed to delete data:", error);
+      alert("An error occurred while deleting data.");
     } finally {
       setLoading(false);
     }
@@ -34,7 +34,7 @@ export function DeleteHistoryButton() {
         onClick={() => setConfirmOpen(true)}
       >
         <Trash2 className="size-4 mr-2" />
-        Delete All History
+        Delete All Data
       </Button>
     );
   }
@@ -46,7 +46,7 @@ export function DeleteHistoryButton() {
         <div className="space-y-1">
           <p className="font-black text-destructive uppercase tracking-widest text-xs">Danger Zone</p>
           <p className="text-sm font-bold text-foreground">
-            Are you absolutely sure? This will permanently delete all your workout sessions, sets, and exercise data. This action cannot be undone.
+            Are you absolutely sure? This will permanently delete ALL your data, including workouts, exercises, and all history. This action cannot be undone.
           </p>
         </div>
       </div>

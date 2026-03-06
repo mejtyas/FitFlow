@@ -23,7 +23,9 @@ export default async function DashboardPage() {
     .limit(1)
     .maybeSingle();
 
-  const activeWorkoutName = activeSession 
+  const hasActiveSession = !!activeSession;
+
+  const activeWorkoutName = hasActiveSession 
     ? (Array.isArray(activeSession.workouts) 
         ? (activeSession.workouts as any)[0]?.name 
         : (activeSession.workouts as any)?.name) ?? "Freestyle"
@@ -133,7 +135,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Active Session / Quick Start Toggle */}
-      {activeSession ? (
+      {hasActiveSession ? (
         <section className="space-y-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Activity className="size-5 text-primary" />

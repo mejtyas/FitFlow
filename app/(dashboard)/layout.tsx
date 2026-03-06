@@ -27,6 +27,9 @@ export default async function DashboardLayout({
     .limit(1)
     .maybeSingle();
 
+  // Ensure we don't show the banner if no session was actually found
+  const hasActiveSession = !!activeSession;
+
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors duration-300">
       {/* Desktop Sidebar */}
@@ -88,7 +91,7 @@ export default async function DashboardLayout({
 
         <main className="flex-1 px-4 py-6 md:px-8 md:py-10 pb-24 md:pb-10">
           <div className="mx-auto max-w-4xl">
-            {activeSession && (
+            {hasActiveSession && (
               <Link 
                 href="/dashboard/active" 
                 className="flex items-center justify-between bg-primary p-3 rounded-2xl mb-6 text-primary-foreground shadow-lg shadow-primary/20 hover:scale-[1.01] transition-transform animate-in slide-in-from-top-2"

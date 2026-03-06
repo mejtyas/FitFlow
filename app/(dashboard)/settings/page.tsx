@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Settings as SettingsIcon, User, Mail, ShieldAlert } from "lucide-react";
-import { DeleteHistoryButton } from "./delete-history-button";
+import { DeleteDataButton } from "./delete-data-button";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -63,13 +63,13 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent className="p-6 pt-8 space-y-6">
             <div className="space-y-2">
-              <h3 className="font-bold text-foreground">Clear Workout History</h3>
+              <h3 className="font-bold text-foreground">Clear All Data</h3>
               <p className="text-sm text-muted-foreground leading-relaxed font-medium">
-                Want a fresh start? This will delete all your workout logs, sets, and exercise history. 
-                Your custom routines and exercises will be preserved.
+                Want a fresh start? This will delete all your workout logs, routines, exercises, and all data associated with your account. 
+                This action is irreversible.
               </p>
             </div>
-            <DeleteHistoryButton />
+            <DeleteDataButton />
           </CardContent>
         </Card>
       </div>
