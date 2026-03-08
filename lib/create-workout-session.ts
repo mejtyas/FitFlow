@@ -37,34 +37,38 @@ export async function createWorkoutSession(
       .order("order_index");
 
     if (workoutExercises?.length) {
-      for (let i = 0; i < workoutExercises.length; i++) {
-        const we = workoutExercises[i];
-        const { data: se, error: seError } = await supabase
-          .from("session_exercises")
-          .insert({
-            workout_session_id: session.id,
-            exercise_id: we.exercise_id,
-            order_index: i,
-          })
-          .select("id")
-          .single();
+      const seRows = workoutExercises.map((we, i) => ({
+        workout_session_id: session.id,
+        exercise_id: we.exercise_id,
+        order_index: i,
+      }));
 
-        if (seError) return { error: seError.message };
-        if (se) {
-          const setRows = Array.from(
-            { length: we.default_sets ?? 2 },
-            (_, j) => ({
-              session_exercise_id: se.id,
-              set_index: j,
-              kg: null,
-              reps: null,
-            })
-          );
-          const { error: setsError } = await supabase
-            .from("session_sets")
-            .insert(setRows);
-          if (setsError) return { error: setsError.message };
-        }
+      const { data: insertedSEs, error: seError } = await supabase
+        .from("session_exercises")
+        .insert(seRows)
+        .select("id, order_index");
+
+      if (seError) return { error: seError.message };
+
+      const sortedSEs = (insertedSEs ?? []).sort(
+        (a, b) => a.order_index - b.order_index
+      );
+
+      const allSetRows = sortedSEs.flatMap((se, idx) => {
+        const defaultSets = workoutExercises[idx].default_sets ?? 2;
+        return Array.from({ length: defaultSets }, (_, j) => ({
+          session_exercise_id: se.id,
+          set_index: j,
+          kg: null,
+          reps: null,
+        }));
+      });
+
+      if (allSetRows.length > 0) {
+        const { error: setsError } = await supabase
+          .from("session_sets")
+          .insert(allSetRows);
+        if (setsError) return { error: setsError.message };
       }
     }
   }
