@@ -54,7 +54,23 @@ export function ActiveWorkoutView({
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    setExercises(sessionExercises);
+    // Only sync structural changes (added/removed exercises or sets) from server,
+    // but preserve local kg/reps values to avoid overwriting user input
+    setExercises((prev) => {
+      const prevById = new Map<string, SetRow>();
+      for (const ex of prev) {
+        for (const s of ex.sets) {
+          prevById.set(s.id, s);
+        }
+      }
+      return sessionExercises.map((ex) => ({
+        ...ex,
+        sets: ex.sets.map((s) => {
+          const local = prevById.get(s.id);
+          return local ? { ...s, kg: local.kg, reps: local.reps } : s;
+        }),
+      }));
+    });
   }, [sessionExercises]);
   const [ending, setEnding] = useState(false);
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
@@ -84,9 +100,9 @@ export function ActiveWorkoutView({
   }, [router]);
 
   const handleSetChange = useCallback(
-    async (setId: string, field: "kg" | "reps", value: number | "") => {
+    (setId: string, field: "kg" | "reps", value: number | "") => {
       const num = value === "" ? null : Number(value);
-      await updateSet(setId, field === "kg" ? { kg: num ?? null } : { reps: num ?? null });
+      // Update local state immediately (optimistic)
       setExercises((prev) =>
         prev.map((ex) => ({
           ...ex,
@@ -97,6 +113,8 @@ export function ActiveWorkoutView({
           ),
         }))
       );
+      // Fire-and-forget server update (don't block UI)
+      updateSet(setId, field === "kg" ? { kg: num ?? null } : { reps: num ?? null });
     },
     []
   );
