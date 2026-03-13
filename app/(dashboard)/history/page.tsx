@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { ExportButtons } from "./export-buttons";
 import { ClearHistoryButton } from "./clear-history-button";
 import { HistoryItem } from "./history-item";
-import { History as HistoryIcon, TrendingUp, Calendar, Clock, Trophy } from "lucide-react";
+import { History as HistoryIcon, TrendingUp, Clock, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
+
+const PAGE_SIZE = 10;
 
 function formatDuration(started: string, ended: string | null): string {
   if (!ended) return "—";
@@ -39,7 +41,16 @@ function getMonthYear(iso: string): string {
   });
 }
 
-export default async function HistoryPage() {
+export default async function HistoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
   const supabase = await createClient();
   const {
     data: { session },
@@ -47,17 +58,33 @@ export default async function HistoryPage() {
   const user = session?.user;
   if (!user) return null;
 
-  const { data: sessions } = await supabase
-    .from("workout_sessions")
-    .select("id, started_at, ended_at, workout_id, workouts(name)")
-    .eq("user_id", user.id)
-    .not("ended_at", "is", null)
-    .order("started_at", { ascending: false });
+  // Run paginated query and count query in parallel
+  const [{ data: sessions }, { count: totalSessions }, { data: statsData }] = await Promise.all([
+    supabase
+      .from("workout_sessions")
+      .select("id, started_at, ended_at, workout_id, workouts(name)")
+      .eq("user_id", user.id)
+      .not("ended_at", "is", null)
+      .order("started_at", { ascending: false })
+      .range(from, to),
+    supabase
+      .from("workout_sessions")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .not("ended_at", "is", null),
+    supabase
+      .from("workout_sessions")
+      .select("started_at, ended_at")
+      .eq("user_id", user.id)
+      .not("ended_at", "is", null),
+  ]);
 
-  // Calculate some basic stats
-  const totalSessions = sessions?.length || 0;
+  const totalCount = totalSessions ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // Calculate training time from stats query
   let totalMinutes = 0;
-  sessions?.forEach((s) => {
+  statsData?.forEach((s) => {
     if (s.ended_at) {
       totalMinutes += Math.floor((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000);
     }
@@ -92,7 +119,7 @@ export default async function HistoryPage() {
       </div>
 
       {/* History Stats */}
-      {totalSessions > 0 && (
+      {totalCount > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Card className="bg-primary/5 border-primary/10 shadow-none">
             <CardHeader className="p-4 pb-0">
@@ -102,7 +129,7 @@ export default async function HistoryPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-1">
-              <span className="text-2xl font-black">{totalSessions}</span>
+              <span className="text-2xl font-black">{totalCount}</span>
             </CardContent>
           </Card>
           <Card className="bg-primary/5 border-primary/10 shadow-none">
@@ -168,6 +195,47 @@ export default async function HistoryPage() {
               </div>
             </div>
           ))}
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                asChild
+                disabled={page <= 1}
+              >
+                <Link
+                  href={page <= 1 ? "/history" : `/history?page=${page - 1}`}
+                  aria-disabled={page <= 1}
+                  className={page <= 1 ? "pointer-events-none opacity-50" : ""}
+                >
+                  <ChevronLeft className="size-4" />
+                  Previous
+                </Link>
+              </Button>
+              <span className="text-sm text-muted-foreground px-3">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                asChild
+                disabled={page >= totalPages}
+              >
+                <Link
+                  href={page >= totalPages ? `/history?page=${totalPages}` : `/history?page=${page + 1}`}
+                  aria-disabled={page >= totalPages}
+                  className={page >= totalPages ? "pointer-events-none opacity-50" : ""}
+                >
+                  Next
+                  <ChevronRight className="size-4" />
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
