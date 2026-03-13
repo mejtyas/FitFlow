@@ -98,7 +98,7 @@ export default async function DashboardPage() {
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
       {/* Welcome Header */}
       <section className="flex flex-col gap-1">
         <h1 className="text-3xl font-extrabold tracking-tight">

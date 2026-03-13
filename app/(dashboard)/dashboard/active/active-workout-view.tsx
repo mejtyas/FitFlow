@@ -136,7 +136,7 @@ export function ActiveWorkoutView({
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300 pb-20">
       <div className="flex items-center justify-between gap-4 sticky top-16 z-20 bg-background/80 backdrop-blur-xl py-4 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-transparent data-[stuck]:border-border transition-all">
         <div className="flex flex-col">
           <h1 className="text-xl font-extrabold tracking-tight text-primary">
