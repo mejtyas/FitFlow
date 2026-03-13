@@ -1,15 +1,8 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
 import { LoginForm } from "./login-form";
 
-export default async function LoginPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
-
+// Middleware already redirects authenticated users away from /login
+export default function LoginPage() {
   return (
     <div className="space-y-8">
       <div className="text-center">

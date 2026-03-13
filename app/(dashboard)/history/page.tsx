@@ -42,8 +42,9 @@ function getMonthYear(iso: string): string {
 export default async function HistoryPage() {
   const supabase = await createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return null;
 
   const { data: sessions } = await supabase

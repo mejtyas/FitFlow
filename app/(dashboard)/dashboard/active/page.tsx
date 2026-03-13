@@ -10,8 +10,9 @@ export default async function ActiveWorkoutPage({
   const params = await searchParams;
   const supabase = await createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session: authSession },
+  } = await supabase.auth.getSession();
+  const user = authSession?.user;
   if (!user) redirect("/login");
 
   let session: { id: string; started_at: string; workout_id: string | null; workouts: unknown } | null = null;

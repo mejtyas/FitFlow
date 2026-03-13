@@ -10,8 +10,9 @@ import { Dumbbell, Clock, Calendar } from "lucide-react";
 export default async function StatsPage() {
   const supabase = await createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) return null;
 
   const { count: totalWorkouts } = await supabase

@@ -28,8 +28,9 @@ export default async function ExerciseDetailPage({
   const { id } = await params;
   const supabase = await createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
   if (!user) redirect("/login");
 
   // 1. Fetch exercise metadata

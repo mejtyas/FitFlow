@@ -17,8 +17,9 @@ export default async function HistoryDetailPage({
   const { id } = await params;
   const supabase = await createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session: authSession },
+  } = await supabase.auth.getSession();
+  const user = authSession?.user;
   if (!user) return null;
 
   const { data: session } = await supabase

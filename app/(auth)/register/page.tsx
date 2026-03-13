@@ -1,15 +1,8 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
 import { RegisterForm } from "./register-form";
 
-export default async function RegisterPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
-
+// Middleware already redirects authenticated users away from /register
+export default function RegisterPage() {
   return (
     <div className="space-y-8">
       <div className="text-center">

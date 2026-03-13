@@ -29,6 +29,7 @@ export async function updateSession(request: NextRequest) {
     "/workouts",
     "/exercises",
     "/stats",
+    "/settings",
   ];
   const authPaths = ["/login", "/register"];
   const pathname = request.nextUrl.pathname;
