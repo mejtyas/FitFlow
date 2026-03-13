@@ -14,85 +14,91 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: activeSession } = await supabase
-    .from("workout_sessions")
-    .select("id, started_at, workout_id, workouts(name)")
-    .eq("user_id", user.id)
-    .is("ended_at", null)
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  // Run all independent queries in parallel
+  const [
+    { data: activeSession },
+    { data: lastSession },
+    { count: totalSessions },
+    { data: last30DaySessions },
+    { data: exerciseData },
+    { data: workouts },
+  ] = await Promise.all([
+    // 1. Active session
+    supabase
+      .from("workout_sessions")
+      .select("id, started_at, workout_id, workouts(name)")
+      .eq("user_id", user.id)
+      .is("ended_at", null)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    // 2. Last completed session
+    supabase
+      .from("workout_sessions")
+      .select("id, started_at, ended_at, workouts(name)")
+      .eq("user_id", user.id)
+      .not("ended_at", "is", null)
+      .order("ended_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    // 3. Total completed sessions count
+    supabase
+      .from("workout_sessions")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .not("ended_at", "is", null),
+    // 4. Last 30 days sessions (for consistency + weekly count — bounded set)
+    supabase
+      .from("workout_sessions")
+      .select("started_at, ended_at")
+      .eq("user_id", user.id)
+      .not("ended_at", "is", null)
+      .gte("ended_at", thirtyDaysAgo.toISOString()),
+    // 5. Unique exercises via inner join (no need to fetch session IDs first)
+    supabase
+      .from("session_exercises")
+      .select("exercise_id, workout_sessions!inner(user_id)")
+      .eq("workout_sessions.user_id", user.id),
+    // 6. Available workouts
+    supabase
+      .from("workouts")
+      .select("id, name")
+      .eq("user_id", user.id)
+      .order("name"),
+  ]);
 
   const hasActiveSession = !!activeSession;
 
-  const activeWorkoutName = hasActiveSession 
-    ? (Array.isArray(activeSession.workouts) 
-        ? (activeSession.workouts as any)[0]?.name 
+  const activeWorkoutName = hasActiveSession
+    ? (Array.isArray(activeSession.workouts)
+        ? (activeSession.workouts as any)[0]?.name
         : (activeSession.workouts as any)?.name) ?? "Unnamed Session"
     : null;
 
-  // 2. Get last completed session
-  const { data: lastSession } = await supabase
-    .from("workout_sessions")
-    .select("id, started_at, ended_at, workouts(name)")
-    .eq("user_id", user.id)
-    .not("ended_at", "is", null)
-    .order("ended_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const lastWorkoutName = lastSession 
-    ? (Array.isArray(lastSession.workouts) 
-        ? (lastSession.workouts as any)[0]?.name 
+  const lastWorkoutName = lastSession
+    ? (Array.isArray(lastSession.workouts)
+        ? (lastSession.workouts as any)[0]?.name
         : (lastSession.workouts as any)?.name) ?? "Unnamed Session"
     : null;
 
-  // 3. Get workout count for the last 7 days
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const { count: weeklyWorkouts } = await supabase
-    .from("workout_sessions")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .not("ended_at", "is", null)
-    .gte("ended_at", sevenDaysAgo.toISOString());
+  // Weekly count: sessions from last 7 days (subset of 30-day data)
+  const weeklyWorkouts = last30DaySessions?.filter(
+    s => new Date(s.ended_at!) >= sevenDaysAgo
+  ).length ?? 0;
 
-  // 4. Get total workouts for consistency and PRs
-  const { data: allSessions } = await supabase
-    .from("workout_sessions")
-    .select("id, started_at, ended_at")
-    .eq("user_id", user.id)
-    .not("ended_at", "is", null);
-
-  const totalSessions = allSessions?.length || 0;
-  
-  // Calculate consistency (days worked out in last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // Consistency: unique days worked out in last 30 days
   const activeDaysInLast30 = new Set(
-    allSessions
-      ?.filter(s => new Date(s.ended_at!) >= thirtyDaysAgo)
-      .map(s => new Date(s.started_at).toDateString())
+    last30DaySessions?.map(s => new Date(s.started_at).toDateString())
   ).size;
   const consistency = Math.round((activeDaysInLast30 / 30) * 100);
 
-  // Total PRs (using unique exercises performed as a proxy for now)
-  let totalPRs = 0;
-  const sessionIds = allSessions?.map(s => s.id) || [];
-  if (sessionIds.length > 0) {
-    const { data: exerciseData } = await supabase
-      .from("session_exercises")
-      .select("exercise_id")
-      .in("workout_session_id", sessionIds);
-    totalPRs = new Set(exerciseData?.map(e => e.exercise_id)).size;
-  }
-
-  // 5. Get available workouts
-  const { data: workouts } = await supabase
-    .from("workouts")
-    .select("id, name")
-    .eq("user_id", user.id)
-    .order("name");
+  // Unique exercises logged
+  const totalPRs = new Set(exerciseData?.map(e => e.exercise_id)).size;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";

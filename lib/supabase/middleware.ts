@@ -23,9 +23,6 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh session; call getClaims() to validate JWT (recommended for middleware)
-  await supabase.auth.getClaims();
-
   const protectedPaths = [
     "/dashboard",
     "/history",
@@ -37,6 +34,11 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
   const isAuthRoute = authPaths.some((p) => pathname.startsWith(p));
+  const needsAuth = pathname === "/" || isProtected || isAuthRoute;
+
+  if (!needsAuth) {
+    return response;
+  }
 
   const {
     data: { user },
