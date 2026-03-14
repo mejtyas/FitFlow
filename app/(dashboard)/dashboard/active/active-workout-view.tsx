@@ -80,7 +80,7 @@ export function ActiveWorkoutView({
     });
   }, [sessionExercises]);
   const [ending, setEnding] = useState(false);
-  const [addExerciseOpen, setAddExerciseOpen] = useState(false);
+  const [addExerciseOpen, setAddExerciseOpen] = useState<string | null>(null);
   const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
   const [editDescriptionValue, setEditDescriptionValue] = useState("");
 
@@ -119,10 +119,40 @@ export function ActiveWorkoutView({
   }, [sessionId, router]);
 
   const handleAddSet = useCallback(async (sessionExerciseId: string) => {
+    // Optimistic: append a placeholder set immediately
+    const tempId = `temp-${Date.now()}`;
+    setExercises((prev) =>
+      prev.map((ex) =>
+        ex.id === sessionExerciseId
+          ? { ...ex, sets: [...ex.sets, { id: tempId, set_index: (ex.sets.length > 0 ? Math.max(...ex.sets.map(s => s.set_index)) + 1 : 0), kg: null, reps: null }] }
+          : ex
+      )
+    );
+
     const result = await addSetToSessionExercise(sessionExerciseId);
-    if (result.error) return;
-    router.refresh();
-  }, [router]);
+    if (result.error) {
+      // Rollback on failure
+      setExercises((prev) =>
+        prev.map((ex) =>
+          ex.id === sessionExerciseId
+            ? { ...ex, sets: ex.sets.filter((s) => s.id !== tempId) }
+            : ex
+        )
+      );
+      return;
+    }
+
+    // Replace temp ID with real server ID
+    if (result.set) {
+      setExercises((prev) =>
+        prev.map((ex) =>
+          ex.id === sessionExerciseId
+            ? { ...ex, sets: ex.sets.map((s) => s.id === tempId ? result.set! : s) }
+            : ex
+        )
+      );
+    }
+  }, []);
 
   const handleSetChange = useCallback(
     (setId: string, field: "kg" | "reps", value: number | "") => {
@@ -145,10 +175,22 @@ export function ActiveWorkoutView({
   );
   
   const handleDeleteSet = useCallback(async (setId: string) => {
+    // Optimistic: remove the set immediately
+    let snapshot: SessionExercise[] = [];
+    setExercises((prev) => {
+      snapshot = prev;
+      return prev.map((ex) => ({
+        ...ex,
+        sets: ex.sets.filter((s) => s.id !== setId),
+      }));
+    });
+
     const result = await deleteSet(setId);
-    if (result.error) return;
-    router.refresh();
-  }, [router]);
+    if (result.error) {
+      // Rollback on failure
+      setExercises(snapshot);
+    }
+  }, []);
 
   const handleSaveDescription = useCallback(
     async (exerciseId: string) => {
@@ -167,12 +209,67 @@ export function ActiveWorkoutView({
 
   const handleAddExercise = useCallback(
     async (exerciseId: string) => {
-      const result = await addExerciseToSession(sessionId, exerciseId);
-      if (result.error) return;
-      setAddExerciseOpen(false);
-      router.refresh();
+      const exercise = availableExercises.find((e) => e.id === exerciseId);
+      if (!exercise) return;
+
+      // Find the exercise after which we're inserting
+      const afterExId = addExerciseOpen;
+      const insertIndex = exercises.findIndex((ex) => ex.id === afterExId);
+      const insertAtOrder = insertIndex !== -1 ? exercises[insertIndex].order_index + 1 : exercises.length;
+      const insertAtArrayPos = insertIndex !== -1 ? insertIndex + 1 : exercises.length;
+
+      // Optimistic: insert exercise at the correct position
+      const tempExId = `temp-ex-${Date.now()}`;
+      const tempSetId = `temp-set-${Date.now()}`;
+      const newExercise: SessionExercise = {
+        id: tempExId,
+        order_index: insertAtOrder,
+        exercise_id: exerciseId,
+        exercise_name: exercise.name,
+        exercise_description: exercise.description,
+        sets: [{ id: tempSetId, set_index: 0, kg: null, reps: null }],
+        previous_sets: [],
+      };
+
+      // Build shifts from current state before optimistic update
+      const shiftsById = exercises
+        .slice(insertAtArrayPos)
+        .map((ex) => ({ id: ex.id, order_index: ex.order_index + 1 }));
+
+      setExercises((prev) => {
+        const updated = [...prev];
+        for (let i = insertAtArrayPos; i < updated.length; i++) {
+          updated[i] = { ...updated[i], order_index: updated[i].order_index + 1 };
+        }
+        updated.splice(insertAtArrayPos, 0, newExercise);
+        return updated;
+      });
+      setAddExerciseOpen(null);
+
+      const result = await addExerciseToSession(sessionId, exerciseId, insertAtOrder, shiftsById.length > 0 ? shiftsById : undefined);
+      if (result.error) {
+        // Rollback on failure
+        setExercises((prev) => prev.filter((ex) => ex.id !== tempExId));
+        return;
+      }
+
+      // Replace temp IDs with real server IDs
+      if (result.sessionExercise && result.initialSet) {
+        setExercises((prev) =>
+          prev.map((ex) =>
+            ex.id === tempExId
+              ? {
+                  ...ex,
+                  id: result.sessionExercise!.id,
+                  order_index: result.sessionExercise!.order_index,
+                  sets: [result.initialSet!],
+                }
+              : ex
+          )
+        );
+      }
     },
-    [sessionId, router]
+    [sessionId, availableExercises, addExerciseOpen, exercises]
   );
 
   return (
@@ -266,7 +363,8 @@ export function ActiveWorkoutView({
 
       <div className="grid gap-4 max-w-2xl mx-auto">
         {exercises.map((ex) => (
-          <Card key={ex.id} className="overflow-hidden shadow-sm border-muted/60">
+          <div key={ex.exercise_id} className="space-y-2">
+          <Card className="overflow-hidden shadow-sm border-muted/60">
             <CardHeader className="py-3 px-4 bg-muted/30 border-b">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-bold tracking-tight">
@@ -324,18 +422,17 @@ export function ActiveWorkoutView({
                 </div>
               )}
               {ex.sets.length > 0 && (
-                <div className="grid grid-cols-[1fr_1fr_40px_40px_40px] gap-3 px-1 mb-1">
+                <div className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 px-1 mb-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">KG</span>
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Reps</span>
-                  <span className="sr-only">Set #</span>
                   <span className="sr-only">Done</span>
                   <span className="sr-only">Delete</span>
                 </div>
               )}
               {ex.sets.map((set, index) => (
                 <div
-                  key={set.id}
-                  className="grid grid-cols-[1fr_1fr_40px_40px_40px] gap-3 items-center animate-in fade-in slide-in-from-left-2 duration-300"
+                  key={set.set_index}
+                  className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 items-center animate-in fade-in slide-in-from-left-2 duration-300"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="relative">
@@ -364,11 +461,6 @@ export function ActiveWorkoutView({
                       }
                       className="h-9 rounded-xl font-bold bg-background/50 focus:bg-background transition-colors"
                     />
-                  </div>
-                  <div className="flex justify-center">
-                    <span className="text-[10px] font-black text-muted-foreground/40 bg-muted/50 size-6 rounded-full flex items-center justify-center">
-                      {index + 1}
-                    </span>
                   </div>
                   <div className="flex justify-center">
                     <Button
@@ -409,64 +501,59 @@ export function ActiveWorkoutView({
               </Button>
             </CardContent>
           </Card>
-        ))}
-
-        <Card className="border-dashed border-2 bg-muted/20 hover:bg-muted/30 transition-colors rounded-2xl cursor-pointer overflow-hidden group">
-          <CardContent className="p-0">
-            {addExerciseOpen ? (
-              <div className="p-4 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/80">Add Exercise</h3>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 rounded-full"
-                    onClick={() => setAddExerciseOpen(false)}
-                  >
-                    <Plus className="size-3 rotate-45" />
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {availableExercises
-                    .filter(
-                      (e) => !exercises.some((se) => se.exercise_id === e.id)
-                    )
-                    .map((e) => (
-                      <Button
-                        key={e.id}
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="rounded-xl font-bold h-9 px-4 hover:bg-primary hover:text-primary-foreground transition-all"
-                        onClick={() => handleAddExercise(e.id)}
-                      >
-                        {e.name}
-                      </Button>
-                    ))}
-                </div>
-                {availableExercises.filter(
-                  (e) => !exercises.some((se) => se.exercise_id === e.id)
-                ).length === 0 && (
-                  <p className="text-xs text-center py-4 text-muted-foreground font-medium italic">
-                    All your exercises are already in this workout.
-                  </p>
-                )}
+          {addExerciseOpen === ex.id ? (
+            <div className="p-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 space-y-3 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/80">Add Exercise</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 rounded-full"
+                  onClick={() => setAddExerciseOpen(null)}
+                >
+                  <X className="size-3" />
+                </Button>
               </div>
-            ) : (
+              <div className="flex flex-wrap gap-2">
+                {availableExercises
+                  .filter(
+                    (e) => !exercises.some((se) => se.exercise_id === e.id)
+                  )
+                  .map((e) => (
+                    <Button
+                      key={e.id}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="rounded-xl font-bold h-8 px-3 text-xs hover:bg-primary hover:text-primary-foreground transition-all"
+                      onClick={() => handleAddExercise(e.id)}
+                    >
+                      {e.name}
+                    </Button>
+                  ))}
+              </div>
+              {availableExercises.filter(
+                (e) => !exercises.some((se) => se.exercise_id === e.id)
+              ).length === 0 && (
+                <p className="text-xs text-center py-2 text-muted-foreground font-medium italic">
+                  All exercises are already added.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex justify-center">
               <button
                 type="button"
-                className="w-full flex flex-col items-center justify-center py-8 gap-2 group-hover:scale-105 transition-transform"
-                onClick={() => setAddExerciseOpen(true)}
+                className="size-7 rounded-full border border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-primary/10 hover:text-primary text-muted-foreground/40 flex items-center justify-center transition-all"
+                onClick={() => setAddExerciseOpen(ex.id)}
               >
-                <div className="size-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-all shadow-inner">
-                  <Plus className="size-6" />
-                </div>
-                <span className="text-sm font-black uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">Add Movement</span>
+                <Plus className="size-3.5" />
               </button>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
+          </div>
+        ))}
       </div>
     </div>
   );

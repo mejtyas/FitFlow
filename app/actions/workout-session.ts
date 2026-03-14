@@ -57,16 +57,16 @@ export async function addSetToSessionExercise(sessionExerciseId: string) {
     .maybeSingle();
 
   const nextIndex = (maxSet?.set_index ?? -1) + 1;
-  const { error } = await supabase.from("session_sets").insert({
+  const { data: newSet, error } = await supabase.from("session_sets").insert({
     session_exercise_id: sessionExerciseId,
     set_index: nextIndex,
     kg: null,
     reps: null,
-  });
+  }).select("id, set_index, kg, reps").single();
 
   if (error) return { error: error.message };
   revalidatePath("/dashboard/active");
-  return {};
+  return { set: newSet };
 }
 
 export async function updateSet(
@@ -111,7 +111,9 @@ export async function deleteSet(setId: string) {
 
 export async function addExerciseToSession(
   sessionId: string,
-  exerciseId: string
+  exerciseId: string,
+  orderIndex: number,
+  shiftsById?: { id: string; order_index: number }[]
 ) {
   const supabase = await createClient();
   const {
@@ -119,46 +121,24 @@ export async function addExerciseToSession(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const { data: ws } = await supabase
-    .from("workout_sessions")
-    .select("id")
-    .eq("id", sessionId)
-    .eq("user_id", user.id)
-    .single();
+  const shiftIds = shiftsById?.map((s) => s.id) ?? [];
+  const shiftOrders = shiftsById?.map((s) => s.order_index) ?? [];
 
-  if (!ws) return { error: "Unauthorized" };
+  const { data, error } = await supabase.rpc("add_exercise_to_session", {
+    p_session_id: sessionId,
+    p_exercise_id: exerciseId,
+    p_order_index: orderIndex,
+    p_shift_ids: shiftIds,
+    p_shift_orders: shiftOrders,
+  });
 
-  const { data: maxOrder } = await supabase
-    .from("session_exercises")
-    .select("order_index")
-    .eq("workout_session_id", sessionId)
-    .order("order_index", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  if (error) return { error: error.message };
 
-  const nextOrder = (maxOrder?.order_index ?? -1) + 1;
-
-  const { data: se, error: seError } = await supabase
-    .from("session_exercises")
-    .insert({
-      workout_session_id: sessionId,
-      exercise_id: exerciseId,
-      order_index: nextOrder,
-    })
-    .select("id")
-    .single();
-
-  if (seError) return { error: seError.message };
-  if (se) {
-    await supabase.from("session_sets").insert({
-      session_exercise_id: se.id,
-      set_index: 0,
-      kg: null,
-      reps: null,
-    });
-  }
   revalidatePath("/dashboard/active");
-  return {};
+  return {
+    sessionExercise: { id: data.session_exercise_id, order_index: data.order_index },
+    initialSet: { id: data.set_id, set_index: 0, kg: null, reps: null },
+  };
 }
 
 export async function deleteWorkoutSession(sessionId: string) {

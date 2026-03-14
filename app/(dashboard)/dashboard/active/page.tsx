@@ -44,21 +44,23 @@ export default async function ActiveWorkoutPage({
     redirect("/dashboard");
   }
 
-  const { data: sessionExercises } = await supabase
-    .from("session_exercises")
-    .select(
-      "id, order_index, exercise_id, exercises(name, description), session_sets(id, set_index, kg, reps)"
-    )
-    .eq("workout_session_id", session.id)
-    .order("order_index");
+  // Run independent queries in parallel
+  const [{ data: sessionExercises }, { data: exercises }] = await Promise.all([
+    supabase
+      .from("session_exercises")
+      .select(
+        "id, order_index, exercise_id, exercises(name, description), session_sets(id, set_index, kg, reps)"
+      )
+      .eq("workout_session_id", session.id)
+      .order("order_index"),
+    supabase
+      .from("exercises")
+      .select("id, name, description")
+      .eq("user_id", user.id)
+      .order("name"),
+  ]);
 
-  const { data: exercises } = await supabase
-    .from("exercises")
-    .select("id, name, description")
-    .eq("user_id", user.id)
-    .order("name");
-
-  // Fetch previous performance for all exercises in a single query
+  // Fetch previous performance (depends on sessionExercises result)
   const exerciseIds = (sessionExercises ?? []).map(se => se.exercise_id);
   const { data: prevPerformances } = exerciseIds.length > 0
     ? await supabase
