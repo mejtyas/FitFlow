@@ -47,14 +47,14 @@ export default async function ActiveWorkoutPage({
   const { data: sessionExercises } = await supabase
     .from("session_exercises")
     .select(
-      "id, order_index, exercise_id, exercises(name), session_sets(id, set_index, kg, reps)"
+      "id, order_index, exercise_id, exercises(name, description), session_sets(id, set_index, kg, reps)"
     )
     .eq("workout_session_id", session.id)
     .order("order_index");
 
   const { data: exercises } = await supabase
     .from("exercises")
-    .select("id, name")
+    .select("id, name, description")
     .eq("user_id", user.id)
     .order("name");
 
@@ -87,8 +87,9 @@ export default async function ActiveWorkoutPage({
   }
 
   const sessionExercisesWithPrev = (sessionExercises ?? []).map((se) => {
-    const ex = se.exercises as { name: string } | { name: string }[] | null;
+    const ex = se.exercises as { name: string; description: string | null } | { name: string; description: string | null }[] | null;
     const name = Array.isArray(ex) ? ex[0]?.name : ex?.name;
+    const description = Array.isArray(ex) ? ex[0]?.description : ex?.description;
     const sets = (se.session_sets as { id: string; set_index: number; kg: number | null; reps: number | null }[] | null) ?? [];
 
     return {
@@ -96,6 +97,7 @@ export default async function ActiveWorkoutPage({
       order_index: se.order_index,
       exercise_id: se.exercise_id,
       exercise_name: name ?? "?",
+      exercise_description: description ?? null,
       sets: [...sets].sort((a, b) => a.set_index - b.set_index),
       previous_sets: prevByExercise.get(se.exercise_id) ?? [],
     };

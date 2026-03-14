@@ -16,17 +16,19 @@ import {
 import { Plus, Trash2, Pencil, Search, X, Dumbbell, Save, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
-type Exercise = { id: string; name: string; created_at: string };
+type Exercise = { id: string; name: string; description: string | null; created_at: string };
 
 export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) {
   const router = useRouter();
   const [exercises, setExercises] = useState(initial);
   const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
   useEffect(() => {
     setExercises(initial);
@@ -46,6 +48,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
     setLoading(true);
     const formData = new FormData();
     formData.set("name", newName.trim());
+    if (newDescription.trim()) formData.set("description", newDescription.trim());
     const result = await createExercise(formData);
     setLoading(false);
     if (result.error) {
@@ -53,6 +56,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
       return;
     }
     setNewName("");
+    setNewDescription("");
     router.refresh();
   }
 
@@ -70,6 +74,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
   function startEdit(ex: Exercise) {
     setEditingId(ex.id);
     setEditName(ex.name);
+    setEditDescription(ex.description ?? "");
   }
 
   async function saveEdit(id: string) {
@@ -78,6 +83,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
     setLoading(true);
     const formData = new FormData();
     formData.set("name", editName.trim());
+    if (editDescription.trim()) formData.set("description", editDescription.trim());
     const { updateExercise } = await import("@/app/actions/exercises");
     const result = await updateExercise(id, formData);
     setLoading(false);
@@ -87,7 +93,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
     }
     setEditingId(null);
     setExercises((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, name: editName.trim() } : e)).sort((a, b) => a.name.localeCompare(b.name))
+      prev.map((e) => (e.id === id ? { ...e, name: editName.trim(), description: editDescription.trim() || null } : e)).sort((a, b) => a.name.localeCompare(b.name))
     );
   }
 
@@ -121,9 +127,22 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
                     className="rounded-xl"
                   />
                 </div>
-                <Button 
-                  type="submit" 
-                  className="w-full rounded-xl font-bold shadow-md shadow-primary/20" 
+                <div className="space-y-2">
+                  <Label htmlFor="new-description" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                    Description <span className="text-muted-foreground/50 normal-case tracking-normal font-normal">(optional)</span>
+                  </Label>
+                  <Input
+                    id="new-description"
+                    placeholder="e.g. Seat height 3, grip width 2"
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    disabled={loading}
+                    className="rounded-xl"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full rounded-xl font-bold shadow-md shadow-primary/20"
                   disabled={loading || !newName.trim()}
                 >
                   {loading ? "Adding..." : "Create Exercise"}
@@ -188,33 +207,46 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
                 <Card key={ex.id} className="group overflow-hidden transition-all hover:border-primary/50 hover:shadow-md">
                   <CardContent className="flex items-center gap-4 p-4">
                     {editingId === ex.id ? (
-                      <div className="flex w-full items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="flex w-full flex-col gap-2 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="flex-1 rounded-lg"
+                            placeholder="Exercise name"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveEdit(ex.id);
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => saveEdit(ex.id)}
+                            disabled={loading}
+                            className="rounded-lg px-4"
+                          >
+                            <Save className="mr-2 size-4" /> Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingId(null)}
+                            className="rounded-lg"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
                         <Input
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
                           className="flex-1 rounded-lg"
-                          autoFocus
+                          placeholder="Description (optional)"
                           onKeyDown={(e) => {
                             if (e.key === "Enter") saveEdit(ex.id);
                             if (e.key === "Escape") setEditingId(null);
                           }}
                         />
-                        <Button
-                          size="sm"
-                          onClick={() => saveEdit(ex.id)}
-                          disabled={loading}
-                          className="rounded-lg px-4"
-                        >
-                          <Save className="mr-2 size-4" /> Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setEditingId(null)}
-                          className="rounded-lg"
-                        >
-                          Cancel
-                        </Button>
                       </div>
                     ) : (
                       <>
@@ -229,6 +261,11 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
                             <span className="font-bold text-base block truncate group-hover:text-primary transition-colors">
                               {ex.name}
                             </span>
+                            {ex.description && (
+                              <span className="text-xs text-muted-foreground block truncate">
+                                {ex.description}
+                              </span>
+                            )}
                           </div>
                         </Link>
                         <div className="flex items-center gap-1 shrink-0">

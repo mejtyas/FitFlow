@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { endWorkout, addSetToSessionExercise, updateSet, deleteSet, addExerciseToSession } from "@/app/actions/workout-session";
+import { updateExerciseDescription } from "@/app/actions/exercises";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, StopCircle, Trash2, TrendingUp } from "lucide-react";
+import { Plus, StopCircle, Trash2, TrendingUp, Check, Pause, Play, RotateCcw, X } from "lucide-react";
 
 type SetRow = { id: string; set_index: number; kg: number | null; reps: number | null };
 type SessionExercise = {
@@ -20,10 +21,11 @@ type SessionExercise = {
   order_index: number;
   exercise_id: string;
   exercise_name: string;
+  exercise_description: string | null;
   sets: SetRow[];
   previous_sets?: { kg: number | null; reps: number | null }[];
 };
-type ExerciseOption = { id: string; name: string };
+type ExerciseOption = { id: string; name: string; description: string | null };
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -52,6 +54,11 @@ export function ActiveWorkoutView({
   const router = useRouter();
   const [exercises, setExercises] = useState(sessionExercises);
   const [elapsed, setElapsed] = useState(0);
+  const [restStart, setRestStart] = useState<number | null>(null);
+  const [restElapsed, setRestElapsed] = useState(0);
+  const [restPaused, setRestPaused] = useState(false);
+  const [pausedAt, setPausedAt] = useState(0);
+  const [confirmedSets, setConfirmedSets] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Only sync structural changes (added/removed exercises or sets) from server,
@@ -74,6 +81,8 @@ export function ActiveWorkoutView({
   }, [sessionExercises]);
   const [ending, setEnding] = useState(false);
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
+  const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
+  const [editDescriptionValue, setEditDescriptionValue] = useState("");
 
   const startedMs = new Date(startedAt).getTime();
 
@@ -85,6 +94,22 @@ export function ActiveWorkoutView({
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [startedMs]);
+
+  useEffect(() => {
+    if (restStart === null || restPaused) return;
+    const tick = () => setRestElapsed(Date.now() - restStart);
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [restStart, restPaused]);
+
+  const handleConfirmSet = useCallback((setId: string) => {
+    setConfirmedSets((prev) => new Set(prev).add(setId));
+    setRestStart(Date.now());
+    setRestPaused(false);
+    setPausedAt(0);
+    setRestElapsed(0);
+  }, []);
 
   const handleEnd = useCallback(async () => {
     setEnding(true);
@@ -125,6 +150,21 @@ export function ActiveWorkoutView({
     router.refresh();
   }, [router]);
 
+  const handleSaveDescription = useCallback(
+    async (exerciseId: string) => {
+      await updateExerciseDescription(exerciseId, editDescriptionValue);
+      setExercises((prev) =>
+        prev.map((ex) =>
+          ex.exercise_id === exerciseId
+            ? { ...ex, exercise_description: editDescriptionValue.trim() || null }
+            : ex
+        )
+      );
+      setEditingDescriptionId(null);
+    },
+    [editDescriptionValue]
+  );
+
   const handleAddExercise = useCallback(
     async (exerciseId: string) => {
       const result = await addExerciseToSession(sessionId, exerciseId);
@@ -137,40 +177,132 @@ export function ActiveWorkoutView({
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300 pb-20">
-      <div className="flex items-center justify-between gap-4 sticky top-16 z-20 bg-background/80 backdrop-blur-xl py-4 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-transparent data-[stuck]:border-border transition-all">
-        <div className="flex flex-col">
-          <h1 className="text-xl font-extrabold tracking-tight text-primary">
-            {workoutName}
-          </h1>
-          <div className="flex items-center gap-2">
-            <div className="size-2 rounded-full bg-red-500 animate-pulse" />
-            <p className="text-lg font-black tabular-nums tracking-tighter">
-              {formatDuration(elapsed)}
-            </p>
+      <div className="sticky top-16 z-20 bg-background/80 backdrop-blur-xl pt-4 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-transparent data-[stuck]:border-border transition-all space-y-2">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-extrabold tracking-tight text-primary">
+              {workoutName}
+            </h1>
+            <div className="flex items-center gap-1.5 text-muted-foreground/60">
+              <div className="size-1.5 rounded-full bg-red-500 animate-pulse" />
+              <p className="text-xs font-bold tabular-nums tracking-tighter">
+                {formatDuration(elapsed)}
+              </p>
+            </div>
           </div>
+          <Button
+            variant="destructive"
+            onClick={handleEnd}
+            disabled={ending}
+            size="sm"
+            className="rounded-xl font-bold px-5 shadow-lg shadow-destructive/20 h-8 group"
+          >
+            <StopCircle className="size-4 group-hover:scale-110 transition-transform" />
+            End Session
+          </Button>
         </div>
-        <Button
-          variant="destructive"
-          onClick={handleEnd}
-          disabled={ending}
-          size="sm"
-          className="rounded-xl font-bold px-5 shadow-lg shadow-destructive/20 h-10 group"
-        >
-          <StopCircle className="size-4 mr-2 group-hover:scale-110 transition-transform" />
-          End Session
-        </Button>
+        <div className={`flex items-center gap-3 rounded-full px-4 py-1.5 w-fit ${restStart !== null ? "bg-primary/10 text-primary" : "bg-muted/50 text-muted-foreground"}`}>
+          <span className="text-base font-black tabular-nums whitespace-nowrap">
+            Rest: {formatDuration(restStart !== null ? (restPaused ? pausedAt : restElapsed) : 0)}
+          </span>
+          {restStart === null ? (
+            <button
+              type="button"
+              className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors text-primary"
+              onClick={() => {
+                setRestStart(Date.now());
+                setRestPaused(false);
+                setPausedAt(0);
+                setRestElapsed(0);
+              }}
+            >
+              <Play className="size-4.5" />
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors"
+                onClick={() => {
+                  if (restPaused) {
+                    setRestStart(Date.now() - pausedAt);
+                    setRestPaused(false);
+                  } else {
+                    setPausedAt(restElapsed);
+                    setRestPaused(true);
+                  }
+                }}
+              >
+                {restPaused ? <Play className="size-4.5" /> : <Pause className="size-4.5" />}
+              </button>
+              <button
+                type="button"
+                className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors"
+                onClick={() => {
+                  setRestStart(Date.now());
+                  setPausedAt(0);
+                  setRestPaused(false);
+                  setRestElapsed(0);
+                }}
+              >
+                <RotateCcw className="size-4.5" />
+              </button>
+              <button
+                type="button"
+                className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors"
+                onClick={() => {
+                  setRestStart(null);
+                  setRestElapsed(0);
+                  setRestPaused(false);
+                  setPausedAt(0);
+                }}
+              >
+                <X className="size-4.5" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 max-w-2xl mx-auto">
         {exercises.map((ex) => (
           <Card key={ex.id} className="overflow-hidden shadow-sm border-muted/60">
-            <CardHeader className="py-3 px-4 bg-muted/30 border-b flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-bold tracking-tight">
-                {ex.exercise_name}
-              </CardTitle>
-              <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                {ex.sets.length} {ex.sets.length === 1 ? 'Set' : 'Sets'}
+            <CardHeader className="py-3 px-4 bg-muted/30 border-b">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-bold tracking-tight">
+                  {ex.exercise_name}
+                </CardTitle>
+                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                  {ex.sets.length} {ex.sets.length === 1 ? 'Set' : 'Sets'}
+                </div>
               </div>
+              {editingDescriptionId === ex.exercise_id ? (
+                <Input
+                  value={editDescriptionValue}
+                  onChange={(e) => setEditDescriptionValue(e.target.value)}
+                  placeholder="Add notes (machine settings, form cues...)"
+                  className="h-7 text-xs mt-1 rounded-lg bg-background/50"
+                  autoFocus
+                  onBlur={() => handleSaveDescription(ex.exercise_id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveDescription(ex.exercise_id);
+                    if (e.key === "Escape") setEditingDescriptionId(null);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="text-left w-full"
+                  onClick={() => {
+                    setEditingDescriptionId(ex.exercise_id);
+                    setEditDescriptionValue(ex.exercise_description ?? "");
+                  }}
+                >
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {ex.exercise_description || "Add notes..."}
+                  </p>
+                </button>
+              )}
             </CardHeader>
             <CardContent className="p-3 space-y-2">
               {ex.previous_sets && ex.previous_sets.length > 0 && (
@@ -192,17 +324,18 @@ export function ActiveWorkoutView({
                 </div>
               )}
               {ex.sets.length > 0 && (
-                <div className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 px-1 mb-1">
+                <div className="grid grid-cols-[1fr_1fr_40px_40px_40px] gap-3 px-1 mb-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">KG</span>
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">Reps</span>
                   <span className="sr-only">Set #</span>
+                  <span className="sr-only">Done</span>
                   <span className="sr-only">Delete</span>
                 </div>
               )}
               {ex.sets.map((set, index) => (
                 <div
                   key={set.id}
-                  className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 items-center animate-in fade-in slide-in-from-left-2 duration-300"
+                  className="grid grid-cols-[1fr_1fr_40px_40px_40px] gap-3 items-center animate-in fade-in slide-in-from-left-2 duration-300"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="relative">
@@ -236,6 +369,21 @@ export function ActiveWorkoutView({
                     <span className="text-[10px] font-black text-muted-foreground/40 bg-muted/50 size-6 rounded-full flex items-center justify-center">
                       {index + 1}
                     </span>
+                  </div>
+                  <div className="flex justify-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={`size-8 rounded-full transition-colors ${
+                        confirmedSets.has(set.id)
+                          ? "bg-green-500/15 text-green-600 hover:bg-green-500/25"
+                          : "text-muted-foreground/30 hover:text-green-600 hover:bg-green-500/10"
+                      }`}
+                      onClick={() => handleConfirmSet(set.id)}
+                    >
+                      <Check className="size-3.5" />
+                    </Button>
                   </div>
                   <div className="flex justify-center">
                     <Button

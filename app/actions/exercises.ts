@@ -12,10 +12,12 @@ export async function createExercise(formData: FormData) {
 
   const name = formData.get("name") as string;
   if (!name?.trim()) return { error: "Name is required" };
+  const description = (formData.get("description") as string)?.trim() || null;
 
   const { error } = await supabase.from("exercises").insert({
     user_id: user.id,
     name: name.trim(),
+    description,
   });
 
   if (error) return { error: error.message };
@@ -34,16 +36,36 @@ export async function updateExercise(id: string, formData: FormData) {
 
   const name = formData.get("name") as string;
   if (!name?.trim()) return { error: "Name is required" };
+  const description = (formData.get("description") as string)?.trim() || null;
 
   const { error } = await supabase
     .from("exercises")
-    .update({ name: name.trim() })
+    .update({ name: name.trim(), description })
     .eq("id", id)
     .eq("user_id", user.id);
 
   if (error) return { error: error.message };
   revalidatePath("/exercises");
   revalidatePath("/workouts");
+  return {};
+}
+
+export async function updateExerciseDescription(id: string, description: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const { error } = await supabase
+    .from("exercises")
+    .update({ description: description.trim() || null })
+    .eq("id", id)
+    .eq("user_id", user.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/exercises");
+  revalidatePath("/dashboard");
   return {};
 }
 
