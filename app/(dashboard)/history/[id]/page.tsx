@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EditSessionTimesForm } from "./edit-session-times-form";
 
 export default async function HistoryDetailPage({
   params,
@@ -17,9 +18,8 @@ export default async function HistoryDetailPage({
   const { id } = await params;
   const supabase = await createClient();
   const {
-    data: { session: authSession },
-  } = await supabase.auth.getSession();
-  const user = authSession?.user;
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return null;
 
   const { data: session } = await supabase
@@ -61,6 +61,13 @@ export default async function HistoryDetailPage({
           </p>
         </div>
       </div>
+
+      <EditSessionTimesForm
+        key={`${session.started_at}-${session.ended_at}`}
+        sessionId={session.id}
+        startedAtIso={session.started_at}
+        endedAtIso={session.ended_at}
+      />
 
       <div className="space-y-4">
         {(sessionExercises ?? []).map((se) => {

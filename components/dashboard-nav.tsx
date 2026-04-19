@@ -9,6 +9,7 @@ import {
   Dumbbell,
   ListOrdered,
   BarChart3,
+  MessageSquareText,
   Settings,
 } from "lucide-react";
 
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/workouts", label: "Workouts", icon: ListOrdered },
   { href: "/exercises", label: "Exercises", icon: Dumbbell },
   { href: "/stats", label: "Stats", icon: BarChart3 },
+  { href: "/feedback", label: "Feedback", icon: MessageSquareText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

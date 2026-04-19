@@ -1,7 +1,37 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import Papa from "papaparse";
+
+type HistoryXlsxRow = {
+  date: string;
+  workout_name: string;
+  duration_minutes: string;
+  exercise_name: string;
+  set_index: string | number;
+  kg: string | number | null;
+  reps: string | number | null;
+};
+
+async function historyRowsToXlsxBlob(rows: HistoryXlsxRow[]): Promise<Blob> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("History");
+  sheet.columns = [
+    { header: "date", key: "date", width: 14 },
+    { header: "workout_name", key: "workout_name", width: 28 },
+    { header: "duration_minutes", key: "duration_minutes", width: 18 },
+    { header: "exercise_name", key: "exercise_name", width: 28 },
+    { header: "set_index", key: "set_index", width: 12 },
+    { header: "kg", key: "kg", width: 10 },
+    { header: "reps", key: "reps", width: 10 },
+  ];
+  rows.forEach((row) => sheet.addRow(row));
+  const buf = await workbook.xlsx.writeBuffer();
+  const bytes = new Uint8Array(buf);
+  return new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -46,11 +76,8 @@ export async function GET(request: Request) {
         },
       });
     }
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(empty);
-    XLSX.utils.book_append_sheet(wb, ws, "History");
-    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-    return new NextResponse(buf, {
+    const body = await historyRowsToXlsxBlob(empty);
+    return new NextResponse(body, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": 'attachment; filename="fitflow-history.xlsx"',
@@ -110,11 +137,14 @@ export async function GET(request: Request) {
     });
   }
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, "History");
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-  return new NextResponse(buf, {
+  const body = await historyRowsToXlsxBlob(
+    rows.map((r) => ({
+      ...r,
+      kg: r.kg ?? "",
+      reps: r.reps ?? "",
+    }))
+  );
+  return new NextResponse(body, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": 'attachment; filename="fitflow-history.xlsx"',

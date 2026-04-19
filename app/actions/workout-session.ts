@@ -141,6 +141,53 @@ export async function addExerciseToSession(
   };
 }
 
+export async function updateCompletedSessionTimes(
+  sessionId: string,
+  times: { startedAt: string; endedAt: string }
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const startMs = new Date(times.startedAt).getTime();
+  const endMs = new Date(times.endedAt).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return { error: "Invalid date." };
+  }
+  if (endMs <= startMs) {
+    return { error: "End time must be after start time." };
+  }
+
+  const { data: existing } = await supabase
+    .from("workout_sessions")
+    .select("id, ended_at")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!existing) return { error: "Session not found or access denied" };
+  if (!existing.ended_at) {
+    return { error: "Only completed sessions can be edited here." };
+  }
+
+  const { error } = await supabase
+    .from("workout_sessions")
+    .update({
+      started_at: times.startedAt,
+      ended_at: times.endedAt,
+    })
+    .eq("id", sessionId)
+    .eq("user_id", user.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/history");
+  revalidatePath(`/history/${sessionId}`);
+  revalidatePath("/stats");
+  return {};
+}
+
 export async function deleteWorkoutSession(sessionId: string) {
   const supabase = await createClient();
   const {

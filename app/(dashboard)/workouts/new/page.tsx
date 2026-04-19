@@ -4,9 +4,8 @@ import { WorkoutForm } from "../workout-form";
 export default async function NewWorkoutPage() {
   const supabase = await createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user;
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return null;
 
   const { data: exercises } = await supabase
