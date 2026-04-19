@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { endWorkout, addSetToSessionExercise, updateSet, deleteSet, addExerciseToSession } from "@/app/actions/workout-session";
 import { updateExerciseDescription } from "@/app/actions/exercises";
@@ -17,6 +17,180 @@ import { Plus, StopCircle, Trash2, TrendingUp, Check, Pause, Play, RotateCcw, X,
 
 /** Default rest between sets: 2m 30s */
 const REST_DEFAULT_SECONDS = 150;
+
+/** Debounce persistence of kg/reps — rapid Server Action calls trigger Next.js 16 flight errors */
+const SET_SAVE_DEBOUNCE_MS = 400;
+
+const ACTIVE_SESSION_LS_PREFIX = "fitflow:activeSession:";
+
+function activeSessionMirrorKey(sessionId: string): string {
+  return `${ACTIVE_SESSION_LS_PREFIX}${sessionId}`;
+}
+
+/** Persisted rest countdown (v2 mirror); running uses wall-clock endAt so remaining survives refresh */
+type RestMirrorPersist =
+  | {
+      targetMs: number;
+      paused: boolean;
+      /** When running: unix ms when countdown hits 0; unused when paused */
+      endAt: number;
+      remainingMsPaused?: number;
+    }
+  | null;
+
+type MirrorPayload = {
+  v: 1 | 2;
+  sessionId: string;
+  updatedAt: number;
+  sets: Record<string, { kg: number | null; reps: number | null }>;
+  rest?: RestMirrorPersist;
+};
+
+function readMirror(sessionId: string): MirrorPayload | null {
+  try {
+    const raw = localStorage.getItem(activeSessionMirrorKey(sessionId));
+    if (!raw) return null;
+    const p = JSON.parse(raw) as MirrorPayload;
+    if (p.v !== 1 && p.v !== 2) return null;
+    if (p.sessionId !== sessionId || !p.sets) return null;
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+function patchRestMirrorFromValues(
+  sessionId: string,
+  target: number | null,
+  remaining: number,
+  paused: boolean
+): void {
+  try {
+    const prev = readMirror(sessionId);
+    const sets = prev?.sets ?? {};
+    let rest: RestMirrorPersist;
+    if (target == null) {
+      rest = null;
+    } else if (paused) {
+      rest = {
+        targetMs: target,
+        paused: true,
+        endAt: 0,
+        remainingMsPaused: remaining,
+      };
+    } else {
+      rest = {
+        targetMs: target,
+        paused: false,
+        endAt: Date.now() + remaining,
+      };
+    }
+    const next: MirrorPayload = {
+      v: 2,
+      sessionId,
+      updatedAt: Date.now(),
+      sets,
+      rest,
+    };
+    if (rest === null && Object.keys(sets).length === 0) {
+      localStorage.removeItem(activeSessionMirrorKey(sessionId));
+    } else {
+      localStorage.setItem(
+        activeSessionMirrorKey(sessionId),
+        JSON.stringify(next)
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function writeMirrorPatch(
+  sessionId: string,
+  setId: string,
+  kg: number | null,
+  reps: number | null
+): void {
+  try {
+    const prev = readMirror(sessionId);
+    const sets = { ...(prev?.sets ?? {}) };
+    sets[setId] = { kg, reps };
+    const next: MirrorPayload = {
+      v: 2,
+      sessionId,
+      updatedAt: Date.now(),
+      sets,
+      rest: prev?.rest,
+    };
+    localStorage.setItem(activeSessionMirrorKey(sessionId), JSON.stringify(next));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function removeMirrorSet(sessionId: string, setId: string): void {
+  try {
+    const m = readMirror(sessionId);
+    if (!m?.sets || !(setId in m.sets)) return;
+    const sets = { ...m.sets };
+    delete sets[setId];
+    if (Object.keys(sets).length === 0) {
+      if (m.rest?.targetMs) {
+        localStorage.setItem(
+          activeSessionMirrorKey(sessionId),
+          JSON.stringify({
+            ...m,
+            v: 2 as const,
+            sets: {},
+            updatedAt: Date.now(),
+          })
+        );
+        return;
+      }
+      localStorage.removeItem(activeSessionMirrorKey(sessionId));
+      return;
+    }
+    localStorage.setItem(
+      activeSessionMirrorKey(sessionId),
+      JSON.stringify({ ...m, v: 2 as const, sets, updatedAt: Date.now() })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearMirror(sessionId: string): void {
+  try {
+    localStorage.removeItem(activeSessionMirrorKey(sessionId));
+  } catch {
+    /* ignore */
+  }
+}
+
+function migrateMirrorSetId(
+  sessionId: string,
+  fromId: string,
+  toId: string
+): void {
+  try {
+    const m = readMirror(sessionId);
+    if (!m?.sets[fromId]) return;
+    const sets = { ...m.sets };
+    sets[toId] = sets[fromId];
+    delete sets[fromId];
+    localStorage.setItem(
+      activeSessionMirrorKey(sessionId),
+      JSON.stringify({
+        ...m,
+        v: 2 as const,
+        sets,
+        updatedAt: Date.now(),
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
 const REST_PRESET_SECONDS = [60, 90, 120, 150, 180, 300] as const;
 
@@ -73,6 +247,20 @@ type SessionExercise = {
 };
 type ExerciseOption = { id: string; name: string; description: string | null };
 
+function mergeMirrorIntoExercises(
+  exercises: SessionExercise[],
+  mirrorSets: Record<string, { kg: number | null; reps: number | null }>
+): SessionExercise[] {
+  return exercises.map((ex) => ({
+    ...ex,
+    sets: ex.sets.map((s) => {
+      const m = mirrorSets[s.id];
+      if (!m) return s;
+      return { ...s, kg: m.kg, reps: m.reps };
+    }),
+  }));
+}
+
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const h = Math.floor(totalSeconds / 3600);
@@ -114,8 +302,130 @@ export function ActiveWorkoutView({
   const [restAlarmFlash, setRestAlarmFlash] = useState(false);
   const [restPickerOpen, setRestPickerOpen] = useState<string | null>(null);
   const [customRestDraft, setCustomRestDraft] = useState("");
+  const [ending, setEnding] = useState(false);
+  const [addExerciseOpen, setAddExerciseOpen] = useState<string | null>(null);
+  const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
+  const [editDescriptionValue, setEditDescriptionValue] = useState("");
   const timerTriggeredSetsRef = useRef<Set<string>>(new Set());
   const alarmConsumedRef = useRef(false);
+  const latestSetSnapshotRef = useRef(
+    new Map<string, { kg: number | null; reps: number | null }>()
+  );
+  const setSaveDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
+  /** Latest rest timer for keepalive flush; avoids stale timer in event listeners */
+  const restPersistRef = useRef({
+    target: null as number | null,
+    remaining: 0,
+    paused: false,
+  });
+  /** Skip mirroring rest to localStorage until initial hydrate from storage has run */
+  const skipRestMirrorWriteRef = useRef(true);
+
+  useLayoutEffect(() => {
+    restPersistRef.current = {
+      target: restTargetMs,
+      remaining: restRemainingMs,
+      paused: restPaused,
+    };
+  }, [restTargetMs, restRemainingMs, restPaused]);
+
+  const flushSetsKeepalive = useCallback(() => {
+    const r = restPersistRef.current;
+    patchRestMirrorFromValues(sessionId, r.target, r.remaining, r.paused);
+
+    for (const [, timer] of setSaveDebounceRef.current) {
+      clearTimeout(timer);
+    }
+    setSaveDebounceRef.current.clear();
+
+    const entries = Array.from(latestSetSnapshotRef.current.entries()).filter(
+      ([id]) => !id.startsWith("temp-")
+    );
+    if (entries.length === 0) return;
+
+    const updates = entries.map(([setId, vals]) => ({
+      setId,
+      kg: vals.kg,
+      reps: vals.reps,
+    }));
+
+    fetch("/api/session-sets/flush", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, updates }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [sessionId]);
+
+  const persistSetNow = useCallback(
+    (setId: string) => {
+      if (setId.startsWith("temp-")) return;
+      const prevTimer = setSaveDebounceRef.current.get(setId);
+      if (prevTimer) clearTimeout(prevTimer);
+      setSaveDebounceRef.current.delete(setId);
+      const vals = latestSetSnapshotRef.current.get(setId);
+      if (!vals) return;
+      void updateSet(sessionId, setId, { kg: vals.kg, reps: vals.reps }).catch(
+        (err) => {
+          console.error("Failed to save set", err);
+        }
+      );
+    },
+    [sessionId]
+  );
+
+  const schedulePersistSet = useCallback(
+    (setId: string) => {
+      const prevTimer = setSaveDebounceRef.current.get(setId);
+      if (prevTimer) clearTimeout(prevTimer);
+      const t = setTimeout(() => {
+        setSaveDebounceRef.current.delete(setId);
+        const vals = latestSetSnapshotRef.current.get(setId);
+        if (!vals) return;
+        void updateSet(sessionId, setId, {
+          kg: vals.kg,
+          reps: vals.reps,
+        }).catch((err) => {
+          console.error("Failed to save set", err);
+        });
+      }, SET_SAVE_DEBOUNCE_MS);
+      setSaveDebounceRef.current.set(setId, t);
+    },
+    [sessionId]
+  );
+
+  useEffect(() => {
+    const debounceTimersRef = setSaveDebounceRef;
+    const snapshotsRef = latestSetSnapshotRef;
+    return () => {
+      for (const [setId, timer] of debounceTimersRef.current) {
+        clearTimeout(timer);
+        const vals = snapshotsRef.current.get(setId);
+        if (vals) {
+          void updateSet(sessionId, setId, {
+            kg: vals.kg,
+            reps: vals.reps,
+          }).catch(() => {});
+        }
+      }
+      debounceTimersRef.current.clear();
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
+    const onPageHide = () => flushSetsKeepalive();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushSetsKeepalive();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [flushSetsKeepalive]);
 
   useEffect(() => {
     // Only sync structural changes (added/removed exercises or sets) from server,
@@ -137,10 +447,75 @@ export function ActiveWorkoutView({
       }));
     });
   }, [sessionExercises]);
-  const [ending, setEnding] = useState(false);
-  const [addExerciseOpen, setAddExerciseOpen] = useState<string | null>(null);
-  const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
-  const [editDescriptionValue, setEditDescriptionValue] = useState("");
+
+  useEffect(() => {
+    skipRestMirrorWriteRef.current = true;
+  }, [sessionId]);
+
+  useEffect(() => {
+    const mirror = readMirror(sessionId);
+
+    const hasSets = mirror && Object.keys(mirror.sets).length > 0;
+    if (hasSets && mirror) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate local mirror after reload/crash */
+      setExercises((prev) => mergeMirrorIntoExercises(prev, mirror.sets));
+
+      for (const [id, vals] of Object.entries(mirror.sets)) {
+        latestSetSnapshotRef.current.set(id, vals);
+      }
+
+      const updates = Object.entries(mirror.sets)
+        .filter(([id]) => !id.startsWith("temp-"))
+        .map(([setId, vals]) => ({
+          setId,
+          kg: vals.kg,
+          reps: vals.reps,
+        }));
+
+      if (updates.length > 0) {
+        void fetch("/api/session-sets/flush", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, updates }),
+        }).catch(() => {});
+      }
+    }
+
+    const rest = mirror?.rest;
+    if (rest?.targetMs) {
+      alarmConsumedRef.current = false;
+      setRestAlarmFlash(false);
+      if (rest.paused && rest.remainingMsPaused != null) {
+        setRestTargetMs(rest.targetMs);
+        setRestRemainingMs(rest.remainingMsPaused);
+        setRestPaused(true);
+      } else if (!rest.paused && rest.endAt > 0) {
+        const remaining = Math.max(0, rest.endAt - Date.now());
+        if (remaining <= 0) {
+          setRestTargetMs(null);
+          setRestRemainingMs(0);
+          setRestPaused(false);
+          patchRestMirrorFromValues(sessionId, null, 0, false);
+        } else {
+          setRestTargetMs(rest.targetMs);
+          setRestRemainingMs(remaining);
+          setRestPaused(false);
+        }
+      }
+    }
+
+    skipRestMirrorWriteRef.current = false;
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (skipRestMirrorWriteRef.current) return;
+    patchRestMirrorFromValues(
+      sessionId,
+      restTargetMs,
+      restRemainingMs,
+      restPaused
+    );
+  }, [sessionId, restTargetMs, restRemainingMs, restPaused]);
 
   const startedMs = new Date(startedAt).getTime();
 
@@ -202,7 +577,12 @@ export function ActiveWorkoutView({
 
   const handleEnd = useCallback(async () => {
     setEnding(true);
-    await endWorkout(sessionId);
+    const result = await endWorkout(sessionId);
+    if ("error" in result && result.error) {
+      setEnding(false);
+      return;
+    }
+    clearMirror(sessionId);
     router.push("/dashboard");
     router.refresh();
   }, [sessionId, router]);
@@ -231,21 +611,44 @@ export function ActiveWorkoutView({
       return;
     }
 
-    // Replace temp ID with real server ID
+    // Replace temp ID with real server ID (keep any kg/reps typed while the request was in flight)
     if (result.set) {
       setExercises((prev) =>
         prev.map((ex) =>
           ex.id === sessionExerciseId
-            ? { ...ex, sets: ex.sets.map((s) => s.id === tempId ? result.set! : s) }
+            ? {
+                ...ex,
+                sets: ex.sets.map((s) =>
+                  s.id === tempId
+                    ? { ...result.set!, kg: s.kg, reps: s.reps }
+                    : s
+                ),
+              }
             : ex
         )
       );
+      const snap = latestSetSnapshotRef.current.get(tempId);
+      const tmr = setSaveDebounceRef.current.get(tempId);
+      if (tmr) {
+        clearTimeout(tmr);
+        setSaveDebounceRef.current.delete(tempId);
+      }
+      latestSetSnapshotRef.current.delete(tempId);
+      if (snap && (snap.kg != null || snap.reps != null)) {
+        latestSetSnapshotRef.current.set(result.set.id, snap);
+        migrateMirrorSetId(sessionId, tempId, result.set.id);
+        schedulePersistSet(result.set.id);
+      }
     }
-  }, []);
+  }, [schedulePersistSet, sessionId]);
 
   const handleSetChange = useCallback(
     (setId: string, exerciseId: string, field: "kg" | "reps", value: number | "") => {
-      const num = value === "" ? null : Number(value);
+      let num: number | null = null;
+      if (value !== "") {
+        const n = typeof value === "number" ? value : Number(value);
+        num = Number.isFinite(n) ? n : null;
+      }
       setExercises((prev) => {
         const next = prev.map((ex) => ({
           ...ex,
@@ -256,6 +659,18 @@ export function ActiveWorkoutView({
 
         const containing = next.find((ex) => ex.sets.some((s) => s.id === setId));
         const updated = containing?.sets.find((s) => s.id === setId);
+        if (updated) {
+          latestSetSnapshotRef.current.set(setId, {
+            kg: updated.kg,
+            reps: updated.reps,
+          });
+          writeMirrorPatch(
+            sessionId,
+            setId,
+            updated.kg,
+            updated.reps
+          );
+        }
         if (
           updated &&
           updated.kg != null &&
@@ -272,9 +687,11 @@ export function ActiveWorkoutView({
 
         return next;
       });
-      updateSet(setId, field === "kg" ? { kg: num ?? null } : { reps: num ?? null });
+      if (!setId.startsWith("temp-")) {
+        schedulePersistSet(setId);
+      }
     },
-    [restDurations, startRestCountdown]
+    [restDurations, schedulePersistSet, sessionId, startRestCountdown]
   );
   
   const handleDeleteSet = useCallback(async (setId: string) => {
@@ -296,6 +713,12 @@ export function ActiveWorkoutView({
 
     timerTriggeredSetsRef.current.delete(setId);
 
+    const pendingSave = setSaveDebounceRef.current.get(setId);
+    if (pendingSave) clearTimeout(pendingSave);
+    setSaveDebounceRef.current.delete(setId);
+    latestSetSnapshotRef.current.delete(setId);
+    removeMirrorSet(sessionId, setId);
+
     const result = await deleteSet(setId);
     if (result.error) {
       setExercises(snapshot);
@@ -304,7 +727,7 @@ export function ActiveWorkoutView({
       }
       timerTriggeredSetsRef.current.add(setId);
     }
-  }, []);
+  }, [sessionId]);
 
   const handleSaveDescription = useCallback(
     async (exerciseId: string) => {
@@ -369,21 +792,41 @@ export function ActiveWorkoutView({
 
       // Replace temp IDs with real server IDs
       if (result.sessionExercise && result.initialSet) {
+        const realEx = result.sessionExercise;
+        const realSet = result.initialSet;
         setExercises((prev) =>
           prev.map((ex) =>
             ex.id === tempExId
               ? {
                   ...ex,
-                  id: result.sessionExercise!.id,
-                  order_index: result.sessionExercise!.order_index,
-                  sets: [result.initialSet!],
+                  id: realEx.id,
+                  order_index: realEx.order_index,
+                  sets: [
+                    {
+                      ...realSet,
+                      kg: ex.sets[0]?.kg ?? realSet.kg,
+                      reps: ex.sets[0]?.reps ?? realSet.reps,
+                    },
+                  ],
                 }
               : ex
           )
         );
+        const snap = latestSetSnapshotRef.current.get(tempSetId);
+        const tmr = setSaveDebounceRef.current.get(tempSetId);
+        if (tmr) {
+          clearTimeout(tmr);
+          setSaveDebounceRef.current.delete(tempSetId);
+        }
+        latestSetSnapshotRef.current.delete(tempSetId);
+        if (snap && (snap.kg != null || snap.reps != null)) {
+          latestSetSnapshotRef.current.set(realSet.id, snap);
+          migrateMirrorSetId(sessionId, tempSetId, realSet.id);
+          schedulePersistSet(realSet.id);
+        }
       }
     },
-    [sessionId, availableExercises, addExerciseOpen, exercises]
+    [sessionId, availableExercises, addExerciseOpen, exercises, schedulePersistSet]
   );
 
   return (
@@ -732,6 +1175,7 @@ export function ActiveWorkoutView({
                       onChange={(e) =>
                         handleSetChange(set.id, ex.exercise_id, "kg", e.target.value === "" ? "" : parseFloat(e.target.value))
                       }
+                      onBlur={() => persistSetNow(set.id)}
                       className="h-9 rounded-xl font-bold bg-background/50 focus:bg-background transition-colors"
                     />
                   </div>
@@ -745,6 +1189,7 @@ export function ActiveWorkoutView({
                       onChange={(e) =>
                         handleSetChange(set.id, ex.exercise_id, "reps", e.target.value === "" ? "" : parseInt(e.target.value, 10))
                       }
+                      onBlur={() => persistSetNow(set.id)}
                       className="h-9 rounded-xl font-bold bg-background/50 focus:bg-background transition-colors"
                     />
                   </div>

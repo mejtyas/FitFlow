@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createWorkoutSession } from "@/lib/create-workout-session";
 import { updateCompletedSessionTimesForUser } from "@/lib/workout-session/update-completed-session-times";
+import { updateSessionSetKgRepsForUser } from "@/lib/workout-session/persist-session-sets";
 
 export async function startWorkout(workoutId: string | null) {
   const supabase = await createClient();
@@ -71,6 +72,7 @@ export async function addSetToSessionExercise(sessionExerciseId: string) {
 }
 
 export async function updateSet(
+  workoutSessionId: string,
   setId: string,
   updates: { kg?: number | null; reps?: number | null }
 ) {
@@ -80,16 +82,16 @@ export async function updateSet(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const payload: { kg?: number | null; reps?: number | null } = {};
-  if (updates.kg !== undefined) payload.kg = updates.kg;
-  if (updates.reps !== undefined) payload.reps = updates.reps;
+  const result = await updateSessionSetKgRepsForUser(
+    supabase,
+    user.id,
+    workoutSessionId,
+    setId,
+    updates
+  );
+  if (result.error) return result;
 
-  const { error } = await supabase
-    .from("session_sets")
-    .update(payload)
-    .eq("id", setId);
-
-  if (error) return { error: error.message };
+  revalidatePath("/dashboard/active");
   return {};
 }
 
