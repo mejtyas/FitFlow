@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useTransition } from "react";
 import { ListOrdered, ChevronDown, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,20 @@ interface WorkoutSelectorProps {
 
 export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedWorkout, setSelectedWorkout] = useState<{ id: string; name: string } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [selectedWorkout, setSelectedWorkout] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [pending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     }
@@ -28,25 +34,35 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleStart = async () => {
-    if (selectedWorkout) {
-      try {
-        setLoading(true);
-        const result = await startWorkout(selectedWorkout.id);
-        
-        if ("error" in result) {
-          console.error(result.error);
+  const handleStart = () => {
+    if (!selectedWorkout) return;
+    startTransition(async () => {
+      const result = await startWorkout(selectedWorkout.id);
+
+      if ("error" in result && result.error) {
+        if (
+          result.error === "active_session_exists" &&
+          "existingSessionId" in result &&
+          typeof result.existingSessionId === "string"
+        ) {
+          const resume = window.confirm(
+            "You already have an active workout. Open it instead of starting a new one?"
+          );
+          if (resume) {
+            router.push(`/dashboard/active?session=${result.existingSessionId}`);
+            router.refresh();
+          }
           return;
         }
+        console.error(result.error);
+        return;
+      }
 
+      if ("sessionId" in result && result.sessionId) {
         router.push(`/dashboard/active?session=${result.sessionId}`);
         router.refresh();
-      } catch (error) {
-        console.error("Failed to start workout:", error);
-      } finally {
-        setLoading(false);
       }
-    }
+    });
   };
 
   return (
@@ -57,14 +73,26 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             "w-full h-12 pl-10 pr-10 rounded-2xl bg-background border border-border transition-all font-bold text-sm text-left flex items-center relative",
-            isOpen ? "ring-2 ring-primary/20 border-primary/50 shadow-lg shadow-primary/5" : "hover:border-primary/30"
+            isOpen
+              ? "ring-2 ring-primary/20 border-primary/50 shadow-lg shadow-primary/5"
+              : "hover:border-primary/30"
           )}
         >
           <ListOrdered className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <span className={cn("truncate", !selectedWorkout && "text-muted-foreground font-medium")}>
+          <span
+            className={cn(
+              "truncate",
+              !selectedWorkout && "text-muted-foreground font-medium"
+            )}
+          >
             {selectedWorkout ? selectedWorkout.name : "Choose Routine..."}
           </span>
-          <ChevronDown className={cn("absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground transition-transform duration-300", isOpen && "rotate-180")} />
+          <ChevronDown
+            className={cn(
+              "absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground transition-transform duration-300",
+              isOpen && "rotate-180"
+            )}
+          />
         </button>
 
         {isOpen && (
@@ -81,18 +109,22 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
                     }}
                     className={cn(
                       "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-colors mb-0.5 last:mb-0",
-                      selectedWorkout?.id === w.id 
-                        ? "bg-primary text-primary-foreground" 
+                      selectedWorkout?.id === w.id
+                        ? "bg-primary text-primary-foreground"
                         : "hover:bg-muted text-foreground"
                     )}
                   >
                     <span className="truncate pr-2">{w.name}</span>
-                    {selectedWorkout?.id === w.id && <Check className="size-4 shrink-0" />}
+                    {selectedWorkout?.id === w.id && (
+                      <Check className="size-4 shrink-0" />
+                    )}
                   </button>
                 ))
               ) : (
                 <div className="px-3 py-6 text-center">
-                  <p className="text-xs text-muted-foreground font-medium">No routines found</p>
+                  <p className="text-xs text-muted-foreground font-medium">
+                    No routines found
+                  </p>
                 </div>
               )}
             </div>
@@ -100,13 +132,13 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
         )}
       </div>
 
-      <Button 
+      <Button
         onClick={handleStart}
-        disabled={!selectedWorkout || loading}
-        variant="secondary" 
+        disabled={!selectedWorkout || pending}
+        variant="secondary"
         className="h-12 rounded-2xl px-6 font-bold shadow-sm shrink-0 group disabled:opacity-50 transition-all active:scale-95"
       >
-        {loading ? (
+        {pending ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
           <>

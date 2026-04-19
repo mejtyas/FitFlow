@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { clampKg, clampReps } from "@/lib/validation";
 
 export type SessionSetKgRepsUpdate = {
   kg?: number | null;
@@ -16,12 +17,13 @@ function buildPayload(updates: SessionSetKgRepsUpdate): {
   reps?: number | null;
 } {
   const payload: { kg?: number | null; reps?: number | null } = {};
-  if (updates.kg !== undefined) payload.kg = updates.kg;
-  if (updates.reps !== undefined) payload.reps = updates.reps;
+  if (updates.kg !== undefined) payload.kg = clampKg(updates.kg) ?? null;
+  if (updates.reps !== undefined) payload.reps = clampReps(updates.reps) ?? null;
   return payload;
 }
 
-async function assertActiveSessionOwnedByUser(
+/** Confirms the workout session exists, belongs to user, and is still active (ended_at null). */
+export async function assertActiveSessionOwnedByUser(
   supabase: SupabaseClient,
   userId: string,
   workoutSessionId: string
@@ -39,7 +41,7 @@ async function assertActiveSessionOwnedByUser(
   return {};
 }
 
-async function verifySetBelongsToSession(
+export async function verifySetBelongsToSession(
   supabase: SupabaseClient,
   setId: string,
   workoutSessionId: string
@@ -62,6 +64,22 @@ async function verifySetBelongsToSession(
     : inner?.workout_session_id;
 
   return sid === workoutSessionId;
+}
+
+/** Confirms session_exercise row is under the given (active) workout session. */
+export async function verifySessionExerciseBelongsToSession(
+  supabase: SupabaseClient,
+  sessionExerciseId: string,
+  workoutSessionId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("session_exercises")
+    .select("id")
+    .eq("id", sessionExerciseId)
+    .eq("workout_session_id", workoutSessionId)
+    .maybeSingle();
+
+  return !error && !!data;
 }
 
 async function updateSessionSetKgRepsScoped(
@@ -128,7 +146,7 @@ export async function flushSessionSetsForActiveWorkout(
   );
   if (gate.error) return gate;
 
-  const results = await Promise.all(
+  const settled = await Promise.allSettled(
     updates.map((u) =>
       updateSessionSetKgRepsScoped(supabase, workoutSessionId, u.setId, {
         kg: u.kg,
@@ -137,6 +155,24 @@ export async function flushSessionSetsForActiveWorkout(
     )
   );
 
-  const firstErr = results.find((r) => r.error);
-  return firstErr ?? {};
+  const failures: string[] = [];
+  for (const s of settled) {
+    if (s.status === "rejected") {
+      failures.push(
+        s.reason instanceof Error ? s.reason.message : String(s.reason)
+      );
+      continue;
+    }
+    const err = s.value.error;
+    if (err) failures.push(err);
+  }
+
+  if (failures.length > 0) {
+    return {
+      error: failures.length === 1
+        ? failures[0]
+        : `${failures.length} updates failed: ${failures.slice(0, 3).join("; ")}`,
+    };
+  }
+  return {};
 }

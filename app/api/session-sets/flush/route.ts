@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { flushSessionSetsForActiveWorkout } from "@/lib/workout-session/persist-session-sets";
 import { revalidatePath } from "next/cache";
+import { clampKg, clampReps, isValidUuid } from "@/lib/validation";
 
 type Body = {
   sessionId: string;
@@ -24,6 +25,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing sessionId or updates" }, { status: 400 });
   }
 
+  if (!isValidUuid(sessionId)) {
+    return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
+  }
+
   const normalized = updates
     .filter(
       (u): u is Body["updates"][number] =>
@@ -33,8 +38,8 @@ export async function POST(req: Request) {
     )
     .map((u) => ({
       setId: u.setId,
-      kg: u.kg ?? null,
-      reps: u.reps ?? null,
+      kg: clampKg(u.kg ?? null) ?? null,
+      reps: clampReps(u.reps ?? null) ?? null,
     }));
 
   if (normalized.length === 0) {

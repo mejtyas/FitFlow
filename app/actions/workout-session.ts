@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createWorkoutSession } from "@/lib/create-workout-session";
 import { updateCompletedSessionTimesForUser } from "@/lib/workout-session/update-completed-session-times";
-import { updateSessionSetKgRepsForUser } from "@/lib/workout-session/persist-session-sets";
+import {
+  assertActiveSessionOwnedByUser,
+  updateSessionSetKgRepsForUser,
+  verifySessionExerciseBelongsToSession,
+  verifySetBelongsToSession,
+} from "@/lib/workout-session/persist-session-sets";
+import { isValidUuid } from "@/lib/validation";
 
 export async function startWorkout(workoutId: string | null) {
   const supabase = await createClient();
@@ -12,10 +18,24 @@ export async function startWorkout(workoutId: string | null) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (workoutId != null && !isValidUuid(workoutId)) {
+    return { error: "Invalid workout" };
+  }
 
   const result = await createWorkoutSession(supabase, user.id, workoutId);
 
-  if ("error" in result) return { error: result.error };
+  if ("error" in result) {
+    if (
+      result.error === "active_session_exists" &&
+      "existingSessionId" in result
+    ) {
+      return {
+        error: result.error,
+        existingSessionId: result.existingSessionId,
+      };
+    }
+    return { error: result.error };
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/active");
@@ -28,27 +48,58 @@ export async function endWorkout(sessionId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(sessionId)) return { error: "Invalid session" };
 
-  // End all active sessions for this user to prevent "zombie" sessions
-  const { error } = await supabase
+  const endedAt = new Date().toISOString();
+
+  const { error: primaryErr } = await supabase
     .from("workout_sessions")
-    .update({ ended_at: new Date().toISOString() })
+    .update({ ended_at: endedAt })
+    .eq("id", sessionId)
     .eq("user_id", user.id)
     .is("ended_at", null);
 
-  if (error) return { error: error.message };
+  if (primaryErr) return { error: primaryErr.message };
+
+  const { error: zombieErr } = await supabase
+    .from("workout_sessions")
+    .update({ ended_at: endedAt })
+    .eq("user_id", user.id)
+    .is("ended_at", null);
+
+  if (zombieErr) return { error: zombieErr.message };
   revalidatePath("/dashboard");
   revalidatePath("/history");
   revalidatePath("/dashboard/active");
   return {};
 }
 
-export async function addSetToSessionExercise(sessionExerciseId: string) {
+export async function addSetToSessionExercise(
+  workoutSessionId: string,
+  sessionExerciseId: string
+) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(workoutSessionId) || !isValidUuid(sessionExerciseId)) {
+    return { error: "Invalid id" };
+  }
+
+  const gate = await assertActiveSessionOwnedByUser(
+    supabase,
+    user.id,
+    workoutSessionId
+  );
+  if (gate.error) return gate;
+
+  const seOk = await verifySessionExerciseBelongsToSession(
+    supabase,
+    sessionExerciseId,
+    workoutSessionId
+  );
+  if (!seOk) return { error: "Session exercise not found" };
 
   const { data: maxSet } = await supabase
     .from("session_sets")
@@ -81,6 +132,9 @@ export async function updateSet(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(workoutSessionId) || !isValidUuid(setId)) {
+    return { error: "Invalid id" };
+  }
 
   const result = await updateSessionSetKgRepsForUser(
     supabase,
@@ -95,12 +149,29 @@ export async function updateSet(
   return {};
 }
 
-export async function deleteSet(setId: string) {
+export async function deleteSet(workoutSessionId: string, setId: string) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(workoutSessionId) || !isValidUuid(setId)) {
+    return { error: "Invalid id" };
+  }
+
+  const gate = await assertActiveSessionOwnedByUser(
+    supabase,
+    user.id,
+    workoutSessionId
+  );
+  if (gate.error) return gate;
+
+  const setOk = await verifySetBelongsToSession(
+    supabase,
+    setId,
+    workoutSessionId
+  );
+  if (!setOk) return { error: "Set not found" };
 
   const { error } = await supabase
     .from("session_sets")
@@ -123,6 +194,20 @@ export async function addExerciseToSession(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (
+    !isValidUuid(sessionId) ||
+    !isValidUuid(exerciseId) ||
+    shiftsById?.some((s) => !isValidUuid(s.id))
+  ) {
+    return { error: "Invalid id" };
+  }
+
+  const sessionGate = await assertActiveSessionOwnedByUser(
+    supabase,
+    user.id,
+    sessionId
+  );
+  if (sessionGate.error) return sessionGate;
 
   const shiftIds = shiftsById?.map((s) => s.id) ?? [];
   const shiftOrders = shiftsById?.map((s) => s.order_index) ?? [];
@@ -137,11 +222,85 @@ export async function addExerciseToSession(
 
   if (error) return { error: error.message };
 
+  if (!data || typeof data !== "object") {
+    return { error: "Invalid server response" };
+  }
+
+  const payload = data as {
+    session_exercise_id: string;
+    order_index: number;
+    set_id: string;
+  };
+
   revalidatePath("/dashboard/active");
   return {
-    sessionExercise: { id: data.session_exercise_id, order_index: data.order_index },
-    initialSet: { id: data.set_id, set_index: 0, kg: null, reps: null },
+    sessionExercise: {
+      id: payload.session_exercise_id,
+      order_index: payload.order_index,
+    },
+    initialSet: {
+      id: payload.set_id,
+      set_index: 0,
+      kg: null,
+      reps: null,
+    },
   };
+}
+
+export async function removeExerciseFromSession(
+  workoutSessionId: string,
+  sessionExerciseId: string
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(workoutSessionId) || !isValidUuid(sessionExerciseId)) {
+    return { error: "Invalid id" };
+  }
+
+  const gate = await assertActiveSessionOwnedByUser(
+    supabase,
+    user.id,
+    workoutSessionId
+  );
+  if (gate.error) return gate;
+
+  const seOk = await verifySessionExerciseBelongsToSession(
+    supabase,
+    sessionExerciseId,
+    workoutSessionId
+  );
+  if (!seOk) return { error: "Session exercise not found" };
+
+  const { error: delErr } = await supabase
+    .from("session_exercises")
+    .delete()
+    .eq("id", sessionExerciseId)
+    .eq("workout_session_id", workoutSessionId);
+
+  if (delErr) return { error: delErr.message };
+
+  const { data: remaining, error: listErr } = await supabase
+    .from("session_exercises")
+    .select("id")
+    .eq("workout_session_id", workoutSessionId)
+    .order("order_index");
+
+  if (listErr) return { error: listErr.message };
+
+  for (let i = 0; i < (remaining ?? []).length; i++) {
+    const row = remaining![i]!;
+    const { error: upErr } = await supabase
+      .from("session_exercises")
+      .update({ order_index: i })
+      .eq("id", row.id);
+    if (upErr) return { error: upErr.message };
+  }
+
+  revalidatePath("/dashboard/active");
+  return {};
 }
 
 export async function updateCompletedSessionTimes(
@@ -153,6 +312,7 @@ export async function updateCompletedSessionTimes(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(sessionId)) return { error: "Invalid session" };
 
   const result = await updateCompletedSessionTimesForUser(
     supabase,
@@ -174,26 +334,8 @@ export async function deleteWorkoutSession(sessionId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(sessionId)) return { error: "Invalid session" };
 
-  const { data: session } = await supabase
-    .from("workout_sessions")
-    .select("id")
-    .eq("id", sessionId)
-    .eq("user_id", user.id)
-    .single();
-
-  if (!session) return { error: "Session not found or access denied" };
-
-  const { data: sessionExercises } = await supabase
-    .from("session_exercises")
-    .select("id")
-    .eq("workout_session_id", sessionId);
-
-  const seIds = (sessionExercises ?? []).map((se) => se.id);
-  if (seIds.length > 0) {
-    await supabase.from("session_sets").delete().in("session_exercise_id", seIds);
-  }
-  await supabase.from("session_exercises").delete().eq("workout_session_id", sessionId);
   const { error } = await supabase
     .from("workout_sessions")
     .delete()
@@ -212,27 +354,13 @@ export async function deleteCompletedWorkoutHistory() {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const { data: sessions } = await supabase
+  const { error } = await supabase
     .from("workout_sessions")
-    .select("id")
+    .delete()
     .eq("user_id", user.id)
     .not("ended_at", "is", null);
 
-  const sessionIds = (sessions ?? []).map((s) => s.id);
-
-  if (sessionIds.length > 0) {
-    const { data: sessionExercises } = await supabase
-      .from("session_exercises")
-      .select("id")
-      .in("workout_session_id", sessionIds);
-
-    const seIds = (sessionExercises ?? []).map((se) => se.id);
-    if (seIds.length > 0) {
-      await supabase.from("session_sets").delete().in("session_exercise_id", seIds);
-    }
-    await supabase.from("session_exercises").delete().in("workout_session_id", sessionIds);
-    await supabase.from("workout_sessions").delete().in("id", sessionIds);
-  }
+  if (error) return { error: error.message };
 
   revalidatePath("/dashboard");
   revalidatePath("/history");
@@ -247,48 +375,26 @@ export async function deleteAllUserData() {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  // 1. Get all session IDs for this user
-  const { data: sessions } = await supabase
+  const { error: sErr } = await supabase
     .from("workout_sessions")
-    .select("id")
+    .delete()
     .eq("user_id", user.id);
 
-  const sessionIds = (sessions ?? []).map((s) => s.id);
+  if (sErr) return { error: sErr.message };
 
-  if (sessionIds.length > 0) {
-    // 2. Get all session exercise IDs for these sessions
-    const { data: sessionExercises } = await supabase
-      .from("session_exercises")
-      .select("id")
-      .in("workout_session_id", sessionIds);
-
-    const seIds = (sessionExercises ?? []).map((se) => se.id);
-    if (seIds.length > 0) {
-      // 3. Delete sets first
-      await supabase.from("session_sets").delete().in("session_exercise_id", seIds);
-    }
-    // 4. Delete session exercises
-    await supabase.from("session_exercises").delete().in("workout_session_id", sessionIds);
-  }
-  // 5. Delete sessions
-  await supabase.from("workout_sessions").delete().eq("user_id", user.id);
-
-  // 6. Delete workout_exercises (linked to workouts)
-  const { data: userWorkouts } = await supabase
+  const { error: wErr } = await supabase
     .from("workouts")
-    .select("id")
+    .delete()
     .eq("user_id", user.id);
-  
-  const workoutIds = (userWorkouts ?? []).map(w => w.id);
-  if (workoutIds.length > 0) {
-    await supabase.from("workout_exercises").delete().in("workout_id", workoutIds);
-    // 7. Delete workouts
-    await supabase.from("workouts").delete().eq("user_id", user.id);
-  }
 
-  // 8. Delete exercises (these might be used in other users' workouts if public, 
-  // but based on the schema and actions they have user_id, so they are user-specific)
-  await supabase.from("exercises").delete().eq("user_id", user.id);
+  if (wErr) return { error: wErr.message };
+
+  const { error: eErr } = await supabase
+    .from("exercises")
+    .delete()
+    .eq("user_id", user.id);
+
+  if (eErr) return { error: eErr.message };
 
   revalidatePath("/dashboard");
   revalidatePath("/history");

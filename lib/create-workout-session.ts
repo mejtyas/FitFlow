@@ -1,20 +1,42 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type CreateWorkoutSessionResult =
+  | { sessionId: string }
+  | { error: "active_session_exists"; existingSessionId: string }
+  | { error: string };
+
+function sameWorkoutId(
+  a: string | null | undefined,
+  b: string | null
+): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return a === b;
+}
+
 export async function createWorkoutSession(
   supabase: SupabaseClient,
   userId: string,
   workoutId: string | null
-): Promise<{ sessionId: string } | { error: string }> {
+): Promise<CreateWorkoutSessionResult> {
   const { data: existing } = await supabase
     .from("workout_sessions")
-    .select("id")
+    .select("id, workout_id")
     .eq("user_id", userId)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (existing) return { sessionId: existing.id };
+  if (existing) {
+    if (sameWorkoutId(existing.workout_id, workoutId)) {
+      return { sessionId: existing.id };
+    }
+    return {
+      error: "active_session_exists",
+      existingSessionId: existing.id,
+    };
+  }
 
   const { data: session, error: sessionError } = await supabase
     .from("workout_sessions")

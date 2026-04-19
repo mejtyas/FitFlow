@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { updateCompletedSessionTimesForUser } from "@/lib/workout-session/update-completed-session-times";
+import { isValidUuid } from "@/lib/validation";
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ sessionId: string }> }
 ) {
   const { sessionId } = await context.params;
+  if (!isValidUuid(sessionId)) {
+    return NextResponse.json({ error: "Invalid session id." }, { status: 400 });
+  }
   let body: unknown;
   try {
     body = await request.json();

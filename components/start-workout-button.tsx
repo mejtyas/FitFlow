@@ -13,7 +13,11 @@ interface StartWorkoutButtonProps {
   size?: "default" | "sm";
 }
 
-export function StartWorkoutButton({ workoutId, className, size = "default" }: StartWorkoutButtonProps) {
+export function StartWorkoutButton({
+  workoutId,
+  className,
+  size = "default",
+}: StartWorkoutButtonProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -21,14 +25,30 @@ export function StartWorkoutButton({ workoutId, className, size = "default" }: S
     try {
       setLoading(true);
       const result = await startWorkout(workoutId);
-      
-      if ("error" in result) {
+
+      if ("error" in result && result.error) {
+        if (
+          result.error === "active_session_exists" &&
+          "existingSessionId" in result &&
+          typeof result.existingSessionId === "string"
+        ) {
+          const resume = window.confirm(
+            "You already have an active workout. Open it instead of starting a new one?"
+          );
+          if (resume) {
+            router.push(`/dashboard/active?session=${result.existingSessionId}`);
+            router.refresh();
+          }
+          return;
+        }
         console.error(result.error);
         return;
       }
 
-      router.push(`/dashboard/active?session=${result.sessionId}`);
-      router.refresh();
+      if ("sessionId" in result && result.sessionId) {
+        router.push(`/dashboard/active?session=${result.sessionId}`);
+        router.refresh();
+      }
     } catch (error) {
       console.error("Failed to start workout:", error);
     } finally {
@@ -37,8 +57,8 @@ export function StartWorkoutButton({ workoutId, className, size = "default" }: S
   };
 
   return (
-    <Button 
-      onClick={handleStart} 
+    <Button
+      onClick={handleStart}
       disabled={loading}
       size={size}
       className={cn(

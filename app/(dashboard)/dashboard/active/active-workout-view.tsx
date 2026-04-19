@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { endWorkout, addSetToSessionExercise, updateSet, deleteSet, addExerciseToSession } from "@/app/actions/workout-session";
+import {
+  endWorkout,
+  addSetToSessionExercise,
+  updateSet,
+  deleteSet,
+  addExerciseToSession,
+  removeExerciseFromSession,
+} from "@/app/actions/workout-session";
 import { updateExerciseDescription } from "@/app/actions/exercises";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,11 +46,13 @@ type RestMirrorPersist =
   | null;
 
 type MirrorPayload = {
-  v: 1 | 2;
+  v: 1 | 2 | 3;
   sessionId: string;
   updatedAt: number;
   sets: Record<string, { kg: number | null; reps: number | null }>;
   rest?: RestMirrorPersist;
+  /** exercise_library id → rest duration in seconds */
+  restDurations?: Record<string, number>;
 };
 
 function readMirror(sessionId: string): MirrorPayload | null {
@@ -51,7 +60,7 @@ function readMirror(sessionId: string): MirrorPayload | null {
     const raw = localStorage.getItem(activeSessionMirrorKey(sessionId));
     if (!raw) return null;
     const p = JSON.parse(raw) as MirrorPayload;
-    if (p.v !== 1 && p.v !== 2) return null;
+    if (p.v !== 1 && p.v !== 2 && p.v !== 3) return null;
     if (p.sessionId !== sessionId || !p.sets) return null;
     return p;
   } catch {
@@ -86,11 +95,12 @@ function patchRestMirrorFromValues(
       };
     }
     const next: MirrorPayload = {
-      v: 2,
+      v: 3,
       sessionId,
       updatedAt: Date.now(),
       sets,
       rest,
+      restDurations: prev?.restDurations,
     };
     if (rest === null && Object.keys(sets).length === 0) {
       localStorage.removeItem(activeSessionMirrorKey(sessionId));
@@ -109,18 +119,20 @@ function writeMirrorPatch(
   sessionId: string,
   setId: string,
   kg: number | null,
-  reps: number | null
+  reps: number | null,
+  restDurations?: Record<string, number>
 ): void {
   try {
     const prev = readMirror(sessionId);
     const sets = { ...(prev?.sets ?? {}) };
     sets[setId] = { kg, reps };
     const next: MirrorPayload = {
-      v: 2,
+      v: 3,
       sessionId,
       updatedAt: Date.now(),
       sets,
       rest: prev?.rest,
+      restDurations: restDurations ?? prev?.restDurations,
     };
     localStorage.setItem(activeSessionMirrorKey(sessionId), JSON.stringify(next));
   } catch {
@@ -140,9 +152,10 @@ function removeMirrorSet(sessionId: string, setId: string): void {
           activeSessionMirrorKey(sessionId),
           JSON.stringify({
             ...m,
-            v: 2 as const,
+            v: 3 as const,
             sets: {},
             updatedAt: Date.now(),
+            restDurations: m.restDurations,
           })
         );
         return;
@@ -152,7 +165,7 @@ function removeMirrorSet(sessionId: string, setId: string): void {
     }
     localStorage.setItem(
       activeSessionMirrorKey(sessionId),
-      JSON.stringify({ ...m, v: 2 as const, sets, updatedAt: Date.now() })
+      JSON.stringify({ ...m, v: 3 as const, sets, updatedAt: Date.now() })
     );
   } catch {
     /* ignore */
@@ -182,7 +195,7 @@ function migrateMirrorSetId(
       activeSessionMirrorKey(sessionId),
       JSON.stringify({
         ...m,
-        v: 2 as const,
+        v: 3 as const,
         sets,
         updatedAt: Date.now(),
       })
@@ -504,6 +517,10 @@ export function ActiveWorkoutView({
       }
     }
 
+    if (mirror?.restDurations && Object.keys(mirror.restDurations).length > 0) {
+      setRestDurations((prev) => ({ ...prev, ...mirror.restDurations }));
+    }
+
     skipRestMirrorWriteRef.current = false;
   }, [sessionId]);
 
@@ -516,6 +533,31 @@ export function ActiveWorkoutView({
       restPaused
     );
   }, [sessionId, restTargetMs, restRemainingMs, restPaused]);
+
+  useEffect(() => {
+    if (skipRestMirrorWriteRef.current) return;
+    try {
+      const prev = readMirror(sessionId);
+      const sets = prev?.sets ?? {};
+      if (Object.keys(restDurations).length === 0 && Object.keys(sets).length === 0) {
+        return;
+      }
+      const next: MirrorPayload = {
+        v: 3,
+        sessionId,
+        updatedAt: Date.now(),
+        sets,
+        rest: prev?.rest,
+        restDurations,
+      };
+      localStorage.setItem(
+        activeSessionMirrorKey(sessionId),
+        JSON.stringify(next)
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [sessionId, restDurations]);
 
   const startedMs = new Date(startedAt).getTime();
 
@@ -598,8 +640,8 @@ export function ActiveWorkoutView({
       )
     );
 
-    const result = await addSetToSessionExercise(sessionExerciseId);
-    if (result.error) {
+    const result = await addSetToSessionExercise(sessionId, sessionExerciseId);
+    if ("error" in result && result.error) {
       // Rollback on failure
       setExercises((prev) =>
         prev.map((ex) =>
@@ -612,7 +654,8 @@ export function ActiveWorkoutView({
     }
 
     // Replace temp ID with real server ID (keep any kg/reps typed while the request was in flight)
-    if (result.set) {
+    if ("set" in result && result.set) {
+      const newSet = result.set;
       setExercises((prev) =>
         prev.map((ex) =>
           ex.id === sessionExerciseId
@@ -620,7 +663,7 @@ export function ActiveWorkoutView({
                 ...ex,
                 sets: ex.sets.map((s) =>
                   s.id === tempId
-                    ? { ...result.set!, kg: s.kg, reps: s.reps }
+                    ? { ...newSet, kg: s.kg, reps: s.reps }
                     : s
                 ),
               }
@@ -635,9 +678,9 @@ export function ActiveWorkoutView({
       }
       latestSetSnapshotRef.current.delete(tempId);
       if (snap && (snap.kg != null || snap.reps != null)) {
-        latestSetSnapshotRef.current.set(result.set.id, snap);
-        migrateMirrorSetId(sessionId, tempId, result.set.id);
-        schedulePersistSet(result.set.id);
+        latestSetSnapshotRef.current.set(newSet.id, snap);
+        migrateMirrorSetId(sessionId, tempId, newSet.id);
+        schedulePersistSet(newSet.id);
       }
     }
   }, [schedulePersistSet, sessionId]);
@@ -668,7 +711,8 @@ export function ActiveWorkoutView({
             sessionId,
             setId,
             updated.kg,
-            updated.reps
+            updated.reps,
+            restDurations
           );
         }
         if (
@@ -719,8 +763,8 @@ export function ActiveWorkoutView({
     latestSetSnapshotRef.current.delete(setId);
     removeMirrorSet(sessionId, setId);
 
-    const result = await deleteSet(setId);
-    if (result.error) {
+    const result = await deleteSet(sessionId, setId);
+    if ("error" in result && result.error) {
       setExercises(snapshot);
       if (wasConfirmed) {
         setConfirmedSets((prev) => new Set(prev).add(setId));
@@ -728,6 +772,22 @@ export function ActiveWorkoutView({
       timerTriggeredSetsRef.current.add(setId);
     }
   }, [sessionId]);
+
+  const handleRemoveExercise = useCallback(
+    async (sessionExerciseId: string) => {
+      let snapshot: SessionExercise[] = [];
+      setExercises((prev) => {
+        snapshot = prev;
+        return prev.filter((ex) => ex.id !== sessionExerciseId);
+      });
+
+      const result = await removeExerciseFromSession(sessionId, sessionExerciseId);
+      if ("error" in result && result.error) {
+        setExercises(snapshot);
+      }
+    },
+    [sessionId]
+  );
 
   const handleSaveDescription = useCallback(
     async (exerciseId: string) => {
@@ -784,14 +844,19 @@ export function ActiveWorkoutView({
       setAddExerciseOpen(null);
 
       const result = await addExerciseToSession(sessionId, exerciseId, insertAtOrder, shiftsById.length > 0 ? shiftsById : undefined);
-      if (result.error) {
+      if ("error" in result && result.error) {
         // Rollback on failure
         setExercises((prev) => prev.filter((ex) => ex.id !== tempExId));
         return;
       }
 
       // Replace temp IDs with real server IDs
-      if (result.sessionExercise && result.initialSet) {
+      if (
+        "sessionExercise" in result &&
+        "initialSet" in result &&
+        result.sessionExercise &&
+        result.initialSet
+      ) {
         const realEx = result.sessionExercise;
         const realSet = result.initialSet;
         setExercises((prev) =>
@@ -960,6 +1025,16 @@ export function ActiveWorkoutView({
                   {ex.exercise_name}
                 </CardTitle>
                 <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 rounded-full text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10"
+                    aria-label={`Remove ${ex.exercise_name} from session`}
+                    onClick={() => void handleRemoveExercise(ex.id)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
                   <div className="relative" id={`rest-picker-${ex.exercise_id}`}>
                     <Button
                       type="button"

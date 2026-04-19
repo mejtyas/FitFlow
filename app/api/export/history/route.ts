@@ -48,12 +48,29 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: sessions } = await supabase
+  const { data: sessions, error: sessionsError } = await supabase
     .from("workout_sessions")
-    .select("id, started_at, ended_at, workout_id, workouts(name)")
+    .select(
+      `
+      id,
+      started_at,
+      ended_at,
+      workout_id,
+      workouts(name),
+      session_exercises(
+        order_index,
+        exercises(name),
+        session_sets(set_index, kg, reps)
+      )
+    `
+    )
     .eq("user_id", user.id)
     .not("ended_at", "is", null)
     .order("started_at", { ascending: false });
+
+  if (sessionsError) {
+    return NextResponse.json({ error: sessionsError.message }, { status: 500 });
+  }
 
   if (!sessions?.length) {
     const empty = [
@@ -103,13 +120,23 @@ export async function GET(request: Request) {
     const durationMin = ((ended - started) / 60000).toFixed(1);
     const dateStr = new Date(session.started_at).toLocaleDateString();
 
-    const { data: sessionExercises } = await supabase
-      .from("session_exercises")
-      .select("id, exercises(name), session_sets(set_index, kg, reps)")
-      .eq("workout_session_id", session.id)
-      .order("order_index");
+    const rawSes = session.session_exercises as
+      | {
+          order_index: number;
+          exercises: { name: string } | { name: string }[] | null;
+          session_sets: {
+            set_index: number;
+            kg: number | null;
+            reps: number | null;
+          }[];
+        }[]
+      | null;
 
-    for (const se of sessionExercises ?? []) {
+    const sessionExercises = [...(rawSes ?? [])].sort(
+      (a, b) => a.order_index - b.order_index
+    );
+
+    for (const se of sessionExercises) {
       const ex = se.exercises as { name: string } | { name: string }[] | null;
       const name = (Array.isArray(ex) ? ex[0]?.name : ex?.name) ?? "?";
       const sets = (se.session_sets as { set_index: number; kg: number | null; reps: number | null }[]) ?? [];

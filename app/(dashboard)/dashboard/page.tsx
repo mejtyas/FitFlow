@@ -200,7 +200,7 @@ export default async function DashboardPage() {
                 </span>
               </div>
               <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
-                Moves logged
+                Unique exercises
               </p>
             </div>
           </li>

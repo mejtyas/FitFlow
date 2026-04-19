@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import {
+  isValidUuid,
+  sanitizeDescription,
+  sanitizeExerciseName,
+} from "@/lib/validation";
 
 export async function createExercise(formData: FormData) {
   const supabase = await createClient();
@@ -10,13 +15,15 @@ export async function createExercise(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const name = formData.get("name") as string;
-  if (!name?.trim()) return { error: "Name is required" };
-  const description = (formData.get("description") as string)?.trim() || null;
+  const name = sanitizeExerciseName(formData.get("name") as string);
+  if (!name) return { error: "Name is required" };
+  const description = sanitizeDescription(
+    (formData.get("description") as string) ?? null
+  );
 
   const { error } = await supabase.from("exercises").insert({
     user_id: user.id,
-    name: name.trim(),
+    name,
     description,
   });
 
@@ -33,14 +40,17 @@ export async function updateExercise(id: string, formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(id)) return { error: "Invalid exercise" };
 
-  const name = formData.get("name") as string;
-  if (!name?.trim()) return { error: "Name is required" };
-  const description = (formData.get("description") as string)?.trim() || null;
+  const name = sanitizeExerciseName(formData.get("name") as string);
+  if (!name) return { error: "Name is required" };
+  const description = sanitizeDescription(
+    (formData.get("description") as string) ?? null
+  );
 
   const { error } = await supabase
     .from("exercises")
-    .update({ name: name.trim(), description })
+    .update({ name, description })
     .eq("id", id)
     .eq("user_id", user.id);
 
@@ -56,10 +66,13 @@ export async function updateExerciseDescription(id: string, description: string)
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(id)) return { error: "Invalid exercise" };
+
+  const desc = sanitizeDescription(description);
 
   const { error } = await supabase
     .from("exercises")
-    .update({ description: description.trim() || null })
+    .update({ description: desc })
     .eq("id", id)
     .eq("user_id", user.id);
 
@@ -75,6 +88,7 @@ export async function deleteExercise(id: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
+  if (!isValidUuid(id)) return { error: "Invalid exercise" };
 
   const { error } = await supabase
     .from("exercises")
