@@ -10,9 +10,10 @@ import { cn } from "@/lib/utils";
 interface StartWorkoutButtonProps {
   workoutId: string;
   className?: string;
+  size?: "default" | "sm";
 }
 
-export function StartWorkoutButton({ workoutId, className }: StartWorkoutButtonProps) {
+export function StartWorkoutButton({ workoutId, className, size = "default" }: StartWorkoutButtonProps) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -39,7 +40,12 @@ export function StartWorkoutButton({ workoutId, className }: StartWorkoutButtonP
     <Button 
       onClick={handleStart} 
       disabled={loading}
-      className={cn("flex-1 font-bold rounded-lg group/start shadow-sm shadow-primary/10", className)}
+      size={size}
+      className={cn(
+        "cursor-pointer rounded-lg font-semibold transition-colors duration-200 group/start shadow-sm shadow-primary/10",
+        size === "default" && "flex-1",
+        className
+      )}
     >
       {loading ? (
         <Loader2 className="mr-2 size-4 animate-spin" />

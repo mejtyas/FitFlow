@@ -12,6 +12,7 @@ export async function createFeedback(formData: FormData) {
 
   const body = (formData.get("body") as string)?.trim();
   if (!body) return { error: "Please enter feedback." };
+  if (body.length > 4000) return { error: "Message is too long (max 4,000 characters)." };
 
   const { error } = await supabase.from("app_feedback").insert({
     user_id: user.id,

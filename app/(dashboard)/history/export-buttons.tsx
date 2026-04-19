@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 
-export function ExportButtons() {
+export function ExportButtons({ disabled }: { disabled?: boolean }) {
   const [loading, setLoading] = useState<"csv" | "xlsx" | null>(null);
 
   async function exportFormat(format: "csv" | "xlsx") {
@@ -29,8 +29,9 @@ export function ExportButtons() {
       <Button
         variant="outline"
         size="sm"
+        className="cursor-pointer rounded-lg"
         onClick={() => exportFormat("csv")}
-        disabled={!!loading}
+        disabled={!!loading || disabled}
       >
         <Download className="size-4" />
         {loading === "csv" ? "Exporting…" : "Export CSV"}
@@ -38,8 +39,9 @@ export function ExportButtons() {
       <Button
         variant="outline"
         size="sm"
+        className="cursor-pointer rounded-lg"
         onClick={() => exportFormat("xlsx")}
-        disabled={!!loading}
+        disabled={!!loading || disabled}
       >
         <Download className="size-4" />
         {loading === "xlsx" ? "Exporting…" : "Export XLSX"}

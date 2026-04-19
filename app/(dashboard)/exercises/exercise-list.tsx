@@ -6,14 +6,17 @@ import { createExercise, deleteExercise } from "@/app/actions/exercises";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Plus, Trash2, Pencil, Search, X, Dumbbell, Save, ChevronRight } from "lucide-react";
+  AlertCircle,
+  Dumbbell,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 
 type Exercise = { id: string; name: string; description: string | null; created_at: string };
@@ -26,6 +29,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -35,10 +39,9 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
   }, [initial]);
 
   const filteredExercises = useMemo(() => {
-    if (!searchQuery) return exercises;
-    return exercises.filter((ex) =>
-      ex.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return exercises;
+    return exercises.filter((ex) => ex.name.toLowerCase().includes(q));
   }, [exercises, searchQuery]);
 
   async function handleCreate(e: React.FormEvent) {
@@ -55,19 +58,23 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
       setError(result.error);
       return;
     }
+    setError(null);
     setNewName("");
     setNewDescription("");
     router.refresh();
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this exercise? It will be removed from all workouts.")) return;
+    if (!confirm("Delete this exercise? It will be removed from all workouts.")) return;
     setError(null);
+    setBusyDeleteId(id);
     const result = await deleteExercise(id);
+    setBusyDeleteId(null);
     if (result.error) {
       setError(result.error);
       return;
     }
+    setError(null);
     router.refresh();
   }
 
@@ -91,214 +98,272 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
       setError(result.error);
       return;
     }
+    setError(null);
     setEditingId(null);
     setExercises((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, name: editName.trim(), description: editDescription.trim() || null } : e)).sort((a, b) => a.name.localeCompare(b.name))
+      prev
+        .map((e) =>
+          e.id === id
+            ? { ...e, name: editName.trim(), description: editDescription.trim() || null }
+            : e
+        )
+        .sort((a, b) => a.name.localeCompare(b.name))
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-[350px_1fr]">
-        {/* Left Column: Add/Search */}
-        <div className="space-y-6">
-          <Card className="shadow-lg shadow-primary/5">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <Plus className="size-5 text-primary" />
-                Add New Exercise
+    <div className="space-y-4">
+      {error && (
+        <div
+          role="alert"
+          className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
+        >
+          <AlertCircle className="size-4 shrink-0 mt-0.5" aria-hidden />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,22rem)_1fr] lg:items-start xl:grid-cols-[minmax(0,24rem)_1fr]">
+        <div className="space-y-4 lg:sticky lg:top-6">
+          <Card className="border bg-card shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Plus className="size-4 text-primary" aria-hidden />
+                New exercise
               </CardTitle>
-              <CardDescription>
-                Create a custom exercise for your library.
+              <CardDescription className="text-sm">
+                Name is required; notes are optional.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               <form onSubmit={handleCreate} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="new-name" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                    Exercise Name
-                  </Label>
-                  <Input
-                    id="new-name"
-                    placeholder="e.g. Incline Bench Press"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    disabled={loading}
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-description" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                    Description <span className="text-muted-foreground/50 normal-case tracking-normal font-normal">(optional)</span>
-                  </Label>
-                  <Input
-                    id="new-description"
-                    placeholder="e.g. Seat height 3, grip width 2"
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    disabled={loading}
-                    className="rounded-xl"
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full rounded-xl font-bold shadow-md shadow-primary/20"
-                  disabled={loading || !newName.trim()}
-                >
-                  {loading ? "Adding..." : "Create Exercise"}
-                </Button>
-                {error && (
-                  <p className="mt-2 text-xs font-medium text-destructive animate-in fade-in slide-in-from-top-1" role="alert">
-                    {error}
-                  </p>
+              <div className="space-y-2">
+                <Label htmlFor="new-name" className="text-sm font-medium">
+                  Name
+                </Label>
+                <Input
+                  id="new-name"
+                  placeholder="e.g. Incline bench press"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  disabled={loading}
+                  className="rounded-lg"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-description" className="text-sm font-medium">
+                  Notes{" "}
+                  <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="new-description"
+                  placeholder="e.g. Seat height, grip width"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  disabled={loading}
+                  className="rounded-lg"
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full cursor-pointer rounded-lg font-semibold transition-colors duration-200"
+                disabled={loading || !newName.trim()}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                    Adding…
+                  </>
+                ) : (
+                  <>
+                    <Plus className="size-4" aria-hidden />
+                    Add exercise
+                  </>
                 )}
-              </form>
+              </Button>
+            </form>
             </CardContent>
           </Card>
 
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Search exercises..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-10 rounded-xl bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 hover:bg-muted rounded-full transition-colors"
-              >
-                <X className="size-3 text-muted-foreground" />
-              </button>
-            )}
-          </div>
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            placeholder="Search by name…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="rounded-lg border bg-background pl-10 pr-10"
+            aria-label="Search exercises by name"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="size-4" />
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* Right Column: Exercise List */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-3">
-              <span className="size-1.5 rounded-full bg-primary" />
-              Your Library ({filteredExercises.length})
-            </h2>
-          </div>
+      <section
+        aria-labelledby="exercise-library-heading"
+        className="min-h-0 lg:max-h-[min(42rem,calc(100vh-11rem))] lg:overflow-y-auto lg:rounded-xl lg:border lg:border-border lg:bg-muted/15 lg:p-1 lg:shadow-inner"
+      >
+        <div className="lg:p-3 lg:pt-2">
+          <h2
+            id="exercise-library-heading"
+            className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            Library{" "}
+            <span className="tabular-nums text-foreground">{filteredExercises.length}</span>
+          </h2>
 
-          <div className="grid gap-2">
-            {filteredExercises.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 bg-muted/20 border-2 border-dashed rounded-3xl">
-                <div className="size-16 rounded-full bg-muted flex items-center justify-center">
-                  <Dumbbell className="size-8 text-muted-foreground" />
-                </div>
-                <div className="space-y-1">
-                  <p className="font-bold text-lg">No exercises found</p>
-                  <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                    {searchQuery ? `No results for "${searchQuery}".` : "Your library is empty. Add your first exercise on the left."}
-                  </p>
-                </div>
-                {searchQuery && (
-                  <Button variant="outline" size="sm" onClick={() => setSearchQuery("")} className="rounded-full">
-                    Clear Search
-                  </Button>
-                )}
+          {filteredExercises.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-14 text-center">
+              <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+                <Dumbbell className="size-7 text-muted-foreground" strokeWidth={1.5} aria-hidden />
               </div>
-            ) : (
-              filteredExercises.map((ex) => (
-                <Card key={ex.id} className="group overflow-hidden transition-all hover:border-primary/50 hover:shadow-md">
-                  <CardContent className="flex items-center gap-4 p-4">
-                    {editingId === ex.id ? (
-                      <div className="flex w-full flex-col gap-2 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="flex-1 rounded-lg"
-                            placeholder="Exercise name"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") saveEdit(ex.id);
-                              if (e.key === "Escape") setEditingId(null);
-                            }}
-                          />
+              <div className="space-y-1">
+                <p className="text-base font-semibold text-foreground">No exercises here</p>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  {searchQuery ? (
+                    <>No names match your search.</>
+                  ) : (
+                    <>Use the composer to add your first exercise.</>
+                  )}
+                </p>
+              </div>
+              {searchQuery && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="cursor-pointer rounded-lg"
+                  onClick={() => setSearchQuery("")}
+                >
+                  Clear search
+                </Button>
+              )}
+            </div>
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+              {filteredExercises.map((ex) => (
+                <li key={ex.id}>
+                  {editingId === ex.id ? (
+                    <div className="space-y-3 bg-muted/30 p-4 sm:p-5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="rounded-lg sm:flex-1"
+                          placeholder="Exercise name"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void saveEdit(ex.id);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                        />
+                        <div className="flex gap-2 shrink-0">
                           <Button
                             size="sm"
-                            onClick={() => saveEdit(ex.id)}
+                            className="cursor-pointer rounded-lg"
+                            onClick={() => void saveEdit(ex.id)}
                             disabled={loading}
-                            className="rounded-lg px-4"
                           >
-                            <Save className="mr-2 size-4" /> Save
+                            {loading ? (
+                              <>
+                                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                                Saving…
+                              </>
+                            ) : (
+                              "Save"
+                            )}
                           </Button>
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="outline"
+                            type="button"
+                            className="cursor-pointer rounded-lg"
                             onClick={() => setEditingId(null)}
-                            className="rounded-lg"
                           >
                             Cancel
                           </Button>
                         </div>
-                        <Input
-                          value={editDescription}
-                          onChange={(e) => setEditDescription(e.target.value)}
-                          className="flex-1 rounded-lg"
-                          placeholder="Description (optional)"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") saveEdit(ex.id);
-                            if (e.key === "Escape") setEditingId(null);
-                          }}
-                        />
                       </div>
-                    ) : (
-                      <>
-                        <Link 
-                          href={`/exercises/${ex.id}`}
-                          className="flex-1 flex items-center gap-4 min-w-0 group/link"
+                      <Input
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="rounded-lg"
+                        placeholder="Notes (optional)"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void saveEdit(ex.id);
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <article className="flex flex-col gap-3 p-4 transition-colors duration-200 hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4 sm:p-5">
+                      <Link
+                        href={`/exercises/${ex.id}`}
+                        className="group flex min-w-0 flex-1 cursor-pointer items-start gap-3 sm:items-center sm:gap-4"
+                      >
+                        <div
+                          className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary"
+                          aria-hidden
                         >
-                          <div className="flex size-10 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground shrink-0 border border-secondary/20 shadow-inner group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                            <Dumbbell className="size-5" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="font-bold text-base block truncate group-hover:text-primary transition-colors">
-                              {ex.name}
-                            </span>
-                            {ex.description && (
-                              <span className="text-xs text-muted-foreground block truncate">
-                                {ex.description}
-                              </span>
-                            )}
-                          </div>
-                        </Link>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-9 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                            onClick={() => startEdit(ex)}
-                            aria-label="Edit"
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-9 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                            onClick={() => handleDelete(ex.id)}
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                          <Link href={`/exercises/${ex.id}`}>
-                            <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary/50 group-hover:translate-x-0.5 transition-all ml-1" />
-                          </Link>
+                          <Dumbbell className="size-4" />
                         </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-foreground transition-colors duration-200 group-hover:text-primary">
+                            {ex.name}
+                          </p>
+                          {ex.description && (
+                            <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+                              {ex.description}
+                            </p>
+                          )}
+                        </div>
+                      </Link>
+                      <div className="flex shrink-0 items-center justify-end gap-1 border-t border-border pt-3 sm:border-t-0 sm:pt-0">
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          className="cursor-pointer rounded-lg text-muted-foreground hover:text-foreground"
+                          onClick={() => startEdit(ex)}
+                          aria-label={`Edit ${ex.name}`}
+                        >
+                          <Pencil className="size-4" aria-hidden />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          className="cursor-pointer rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          disabled={busyDeleteId === ex.id}
+                          onClick={() => void handleDelete(ex.id)}
+                          aria-label={`Delete ${ex.name}`}
+                        >
+                          {busyDeleteId === ex.id ? (
+                            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                          ) : (
+                            <Trash2 className="size-4" aria-hidden />
+                          )}
+                        </Button>
+                      </div>
+                    </article>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+      </section>
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { endWorkout, addSetToSessionExercise, updateSet, deleteSet, addExerciseToSession } from "@/app/actions/workout-session";
 import { updateExerciseDescription } from "@/app/actions/exercises";
@@ -14,7 +13,44 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, StopCircle, Trash2, TrendingUp, Check, Pause, Play, RotateCcw, X, ChevronDown } from "lucide-react";
+import { Plus, StopCircle, Trash2, TrendingUp, Check, Pause, Play, RotateCcw, X, ChevronDown, Clock } from "lucide-react";
+
+/** Default rest between sets: 2m 30s */
+const REST_DEFAULT_SECONDS = 150;
+
+const REST_PRESET_SECONDS = [60, 90, 120, 150, 180, 300] as const;
+
+function formatSecondsAsClock(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function playRestCompleteBeep() {
+  try {
+    const AudioCtx =
+      typeof window !== "undefined"
+        ? window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        : undefined;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.25);
+    osc.onended = () => {
+      ctx.close().catch(() => {});
+    };
+  } catch {
+    /* ignore */
+  }
+}
 
 type SetRow = { id: string; set_index: number; kg: number | null; reps: number | null };
 
@@ -48,12 +84,8 @@ function formatDuration(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function formatShortSessionDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+function formatPastSetsLine(sets: { kg: number | null; reps: number | null }[]): string {
+  return sets.map((s) => `${s.kg ?? 0}×${s.reps ?? 0}`).join(", ");
 }
 
 export function ActiveWorkoutView({
@@ -72,15 +104,23 @@ export function ActiveWorkoutView({
   const router = useRouter();
   const [exercises, setExercises] = useState(sessionExercises);
   const [elapsed, setElapsed] = useState(0);
-  const [restStart, setRestStart] = useState<number | null>(null);
-  const [restElapsed, setRestElapsed] = useState(0);
+  /** null = rest timer idle / finished */
+  const [restTargetMs, setRestTargetMs] = useState<number | null>(null);
+  const [restRemainingMs, setRestRemainingMs] = useState(0);
   const [restPaused, setRestPaused] = useState(false);
-  const [pausedAt, setPausedAt] = useState(0);
   const [confirmedSets, setConfirmedSets] = useState<Set<string>>(new Set());
+  /** Per exercise_library id → rest duration in seconds (default REST_DEFAULT_SECONDS when unset) */
+  const [restDurations, setRestDurations] = useState<Record<string, number>>({});
+  const [restAlarmFlash, setRestAlarmFlash] = useState(false);
+  const [restPickerOpen, setRestPickerOpen] = useState<string | null>(null);
+  const [customRestDraft, setCustomRestDraft] = useState("");
+  const timerTriggeredSetsRef = useRef<Set<string>>(new Set());
+  const alarmConsumedRef = useRef(false);
 
   useEffect(() => {
     // Only sync structural changes (added/removed exercises or sets) from server,
     // but preserve local kg/reps values to avoid overwriting user input
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- intentional prop→state merge for optimistic typing */
     setExercises((prev) => {
       const prevById = new Map<string, SetRow>();
       for (const ex of prev) {
@@ -105,6 +145,16 @@ export function ActiveWorkoutView({
   const startedMs = new Date(startedAt).getTime();
 
   useEffect(() => {
+    if (!restPickerOpen) return;
+    const down = (e: MouseEvent) => {
+      const el = document.getElementById(`rest-picker-${restPickerOpen}`);
+      if (el && !el.contains(e.target as Node)) setRestPickerOpen(null);
+    };
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [restPickerOpen]);
+
+  useEffect(() => {
     const tick = () => {
       setElapsed(Date.now() - startedMs);
     };
@@ -114,19 +164,40 @@ export function ActiveWorkoutView({
   }, [startedMs]);
 
   useEffect(() => {
-    if (restStart === null || restPaused) return;
-    const tick = () => setRestElapsed(Date.now() - restStart);
-    tick();
-    const interval = setInterval(tick, 1000);
+    if (restTargetMs === null || restPaused) return;
+    const interval = setInterval(() => {
+      setRestRemainingMs((prev) => {
+        const next = Math.max(0, prev - 1000);
+        if (prev > 0 && next === 0 && !alarmConsumedRef.current) {
+          alarmConsumedRef.current = true;
+          queueMicrotask(() => {
+            playRestCompleteBeep();
+            if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+              navigator.vibrate(200);
+            }
+            setRestAlarmFlash(true);
+            window.setTimeout(() => setRestAlarmFlash(false), 2200);
+            setRestTargetMs(null);
+            setRestPaused(false);
+          });
+        }
+        return next;
+      });
+    }, 1000);
     return () => clearInterval(interval);
-  }, [restStart, restPaused]);
+  }, [restTargetMs, restPaused]);
+
+  const startRestCountdown = useCallback((durationSeconds: number) => {
+    const ms = Math.max(1000, durationSeconds * 1000);
+    alarmConsumedRef.current = false;
+    setRestAlarmFlash(false);
+    setRestTargetMs(ms);
+    setRestRemainingMs(ms);
+    setRestPaused(false);
+  }, []);
 
   const handleConfirmSet = useCallback((setId: string) => {
     setConfirmedSets((prev) => new Set(prev).add(setId));
-    setRestStart(Date.now());
-    setRestPaused(false);
-    setPausedAt(0);
-    setRestElapsed(0);
   }, []);
 
   const handleEnd = useCallback(async () => {
@@ -173,23 +244,37 @@ export function ActiveWorkoutView({
   }, []);
 
   const handleSetChange = useCallback(
-    (setId: string, field: "kg" | "reps", value: number | "") => {
+    (setId: string, exerciseId: string, field: "kg" | "reps", value: number | "") => {
       const num = value === "" ? null : Number(value);
-      // Update local state immediately (optimistic)
-      setExercises((prev) =>
-        prev.map((ex) => ({
+      setExercises((prev) => {
+        const next = prev.map((ex) => ({
           ...ex,
           sets: ex.sets.map((s) =>
-            s.id === setId
-              ? { ...s, [field]: num }
-              : s
+            s.id === setId ? { ...s, [field]: num } : s
           ),
-        }))
-      );
-      // Fire-and-forget server update (don't block UI)
+        }));
+
+        const containing = next.find((ex) => ex.sets.some((s) => s.id === setId));
+        const updated = containing?.sets.find((s) => s.id === setId);
+        if (
+          updated &&
+          updated.kg != null &&
+          updated.reps != null &&
+          !timerTriggeredSetsRef.current.has(setId)
+        ) {
+          timerTriggeredSetsRef.current.add(setId);
+          const sec = restDurations[exerciseId] ?? REST_DEFAULT_SECONDS;
+          queueMicrotask(() => {
+            startRestCountdown(sec);
+            setConfirmedSets((prevSets) => new Set(prevSets).add(setId));
+          });
+        }
+
+        return next;
+      });
       updateSet(setId, field === "kg" ? { kg: num ?? null } : { reps: num ?? null });
     },
-    []
+    [restDurations, startRestCountdown]
   );
   
   const handleDeleteSet = useCallback(async (setId: string) => {
@@ -209,12 +294,15 @@ export function ActiveWorkoutView({
       }));
     });
 
+    timerTriggeredSetsRef.current.delete(setId);
+
     const result = await deleteSet(setId);
     if (result.error) {
       setExercises(snapshot);
       if (wasConfirmed) {
         setConfirmedSets((prev) => new Set(prev).add(setId));
       }
+      timerTriggeredSetsRef.current.add(setId);
     }
   }, []);
 
@@ -336,80 +424,202 @@ export function ActiveWorkoutView({
             End Session
           </Button>
         </div>
-        <div className={`flex items-center gap-3 rounded-full px-4 py-1.5 w-fit ${restStart !== null ? "bg-primary/10 text-primary" : "bg-muted/50 text-muted-foreground"}`}>
-          <span className="text-base font-black tabular-nums whitespace-nowrap">
-            Rest: {formatDuration(restStart !== null ? (restPaused ? pausedAt : restElapsed) : 0)}
-          </span>
-          {restStart === null ? (
-            <button
-              type="button"
-              className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors text-primary"
-              onClick={() => {
-                setRestStart(Date.now());
-                setRestPaused(false);
-                setPausedAt(0);
-                setRestElapsed(0);
-              }}
-            >
-              <Play className="size-4.5" />
-            </button>
-          ) : (
-            <>
+        <div
+          className={`flex flex-col gap-2 rounded-2xl px-4 py-2 w-fit max-w-full transition-colors duration-300 ${
+            restAlarmFlash
+              ? "bg-destructive/25 text-destructive animate-pulse ring-2 ring-destructive/40"
+              : restTargetMs !== null
+                ? "bg-primary/10 text-primary"
+                : "bg-muted/50 text-muted-foreground"
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-base font-black tabular-nums whitespace-nowrap">
+              Rest: {restTargetMs !== null ? formatDuration(restRemainingMs) : "—"}
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 hidden sm:inline">
+              {restTargetMs === null ? `Play uses ${formatSecondsAsClock(REST_DEFAULT_SECONDS)}` : restPaused ? "Paused" : "Running"}
+            </span>
+            {restTargetMs === null ? (
               <button
                 type="button"
-                className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors"
-                onClick={() => {
-                  if (restPaused) {
-                    setRestStart(Date.now() - pausedAt);
+                className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors text-primary shrink-0"
+                aria-label={`Start rest timer (${formatSecondsAsClock(REST_DEFAULT_SECONDS)})`}
+                onClick={() => startRestCountdown(REST_DEFAULT_SECONDS)}
+              >
+                <Play className="size-4.5" />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors shrink-0"
+                  aria-label={restPaused ? "Resume rest timer" : "Pause rest timer"}
+                  onClick={() => setRestPaused((p) => !p)}
+                >
+                  {restPaused ? <Play className="size-4.5" /> : <Pause className="size-4.5" />}
+                </button>
+                <button
+                  type="button"
+                  className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors shrink-0"
+                  aria-label="Restart rest timer"
+                  onClick={() => {
+                    if (restTargetMs != null) {
+                      alarmConsumedRef.current = false;
+                      setRestRemainingMs(restTargetMs);
+                      setRestPaused(false);
+                      setRestAlarmFlash(false);
+                    }
+                  }}
+                >
+                  <RotateCcw className="size-4.5" />
+                </button>
+                <button
+                  type="button"
+                  className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors shrink-0"
+                  aria-label="Stop rest timer"
+                  onClick={() => {
+                    setRestTargetMs(null);
+                    setRestRemainingMs(0);
                     setRestPaused(false);
-                  } else {
-                    setPausedAt(restElapsed);
-                    setRestPaused(true);
-                  }
+                    setRestAlarmFlash(false);
+                    alarmConsumedRef.current = false;
+                  }}
+                >
+                  <X className="size-4.5" />
+                </button>
+              </>
+            )}
+          </div>
+          {restTargetMs !== null && (
+            <div className="h-1.5 w-full min-w-[12rem] max-w-xs rounded-full bg-muted/80 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
+                style={{
+                  width:
+                    restTargetMs > 0
+                      ? `${Math.min(100, Math.round((restRemainingMs / restTargetMs) * 100))}%`
+                      : "0%",
                 }}
-              >
-                {restPaused ? <Play className="size-4.5" /> : <Pause className="size-4.5" />}
-              </button>
-              <button
-                type="button"
-                className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors"
-                onClick={() => {
-                  setRestStart(Date.now());
-                  setPausedAt(0);
-                  setRestPaused(false);
-                  setRestElapsed(0);
-                }}
-              >
-                <RotateCcw className="size-4.5" />
-              </button>
-              <button
-                type="button"
-                className="size-9 rounded-full hover:bg-primary/20 active:bg-primary/30 flex items-center justify-center transition-colors"
-                onClick={() => {
-                  setRestStart(null);
-                  setRestElapsed(0);
-                  setRestPaused(false);
-                  setPausedAt(0);
-                }}
-              >
-                <X className="size-4.5" />
-              </button>
-            </>
+              />
+            </div>
           )}
         </div>
       </div>
 
       <div className="grid gap-4 max-w-2xl mx-auto">
         {exercises.map((ex) => (
-          <div key={ex.exercise_id} className="space-y-2">
+          <div key={ex.id} className="space-y-2">
           <Card className="overflow-hidden shadow-sm border-muted/60">
             <CardHeader className="py-3 px-4 bg-muted/30 border-b">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-bold tracking-tight">
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-sm font-bold tracking-tight min-w-0 pt-0.5">
                   {ex.exercise_name}
                 </CardTitle>
-                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                  {ex.sets.length} {ex.sets.length === 1 ? 'Set' : 'Sets'}
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="relative" id={`rest-picker-${ex.exercise_id}`}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 gap-1 rounded-lg px-2 text-[10px] font-black uppercase tracking-tight"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRestPickerOpen((o) => {
+                          const opening = o !== ex.exercise_id;
+                          if (opening) {
+                            setCustomRestDraft(String(restDurations[ex.exercise_id] ?? REST_DEFAULT_SECONDS));
+                            return ex.exercise_id;
+                          }
+                          return null;
+                        });
+                      }}
+                    >
+                      <Clock className="size-3 shrink-0 opacity-70" aria-hidden />
+                      Rest {formatSecondsAsClock(restDurations[ex.exercise_id] ?? REST_DEFAULT_SECONDS)}
+                    </Button>
+                    {restPickerOpen === ex.exercise_id ? (
+                      <div
+                        className="absolute right-0 top-full z-30 mt-2 w-[min(100vw-2rem,280px)] rounded-xl border bg-popover p-3 shadow-lg animate-in fade-in zoom-in-95 duration-150"
+                        role="dialog"
+                        aria-label="Rest duration for this exercise"
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+                          Rest between sets
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {REST_PRESET_SECONDS.map((sec) => {
+                            const active =
+                              (restDurations[ex.exercise_id] ?? REST_DEFAULT_SECONDS) === sec;
+                            return (
+                              <Button
+                                key={sec}
+                                type="button"
+                                size="sm"
+                                variant={active ? "default" : "outline"}
+                                className="h-8 rounded-lg px-2 text-xs font-bold tabular-nums"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRestDurations((prev) => ({ ...prev, [ex.exercise_id]: sec }));
+                                  setCustomRestDraft(String(sec));
+                                }}
+                              >
+                                {formatSecondsAsClock(sec)}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-3 flex items-end gap-2">
+                          <div className="flex-1 space-y-1">
+                            <Label
+                              htmlFor={`custom-rest-${ex.exercise_id}`}
+                              className="text-[10px] uppercase font-black text-muted-foreground"
+                            >
+                              Custom (seconds)
+                            </Label>
+                            <Input
+                              id={`custom-rest-${ex.exercise_id}`}
+                              type="number"
+                              min={10}
+                              max={3600}
+                              step={5}
+                              value={customRestDraft}
+                              onChange={(e) => setCustomRestDraft(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  const v = parseInt(customRestDraft, 10);
+                                  if (!Number.isFinite(v)) return;
+                                  const clamped = Math.min(3600, Math.max(10, v));
+                                  setRestDurations((prev) => ({ ...prev, [ex.exercise_id]: clamped }));
+                                  setRestPickerOpen(null);
+                                }
+                              }}
+                              className="h-9 rounded-lg font-bold"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-9 shrink-0 font-bold"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const v = parseInt(customRestDraft, 10);
+                              if (!Number.isFinite(v)) return;
+                              const clamped = Math.min(3600, Math.max(10, v));
+                              setRestDurations((prev) => ({ ...prev, [ex.exercise_id]: clamped }));
+                              setRestPickerOpen(null);
+                            }}
+                          >
+                            Set
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 whitespace-nowrap pt-1">
+                    {ex.sets.length} {ex.sets.length === 1 ? "Set" : "Sets"}
+                  </div>
                 </div>
               </div>
               {editingDescriptionId === ex.exercise_id ? (
@@ -441,77 +651,62 @@ export function ActiveWorkoutView({
               )}
             </CardHeader>
             <CardContent className="p-3 space-y-2">
-              {ex.past_sessions.length > 0 && (
-                <details className="group mb-4 rounded-xl border border-primary/10 bg-primary/5 text-foreground animate-in fade-in zoom-in-95 duration-500 open:pb-2">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
+              {ex.past_sessions.length > 0 &&
+                (ex.past_sessions.length === 1 ? (
+                  <div className="mb-4 rounded-xl border border-primary/10 bg-primary/5 px-3 py-2.5 text-foreground animate-in fade-in zoom-in-95 duration-500">
+                    <div className="flex min-w-0 items-center gap-2">
                       <TrendingUp className="size-3 shrink-0 text-primary" />
                       <div className="min-w-0">
                         <span className="text-[10px] font-black uppercase tracking-[0.1em] text-primary/70">
-                          History
+                          Last time
                         </span>
-                        <p className="truncate text-xs font-semibold text-foreground/90">
-                          Last: {ex.past_sessions[0].workoutName} ·{" "}
-                          {formatShortSessionDate(ex.past_sessions[0].startedAt)}
-                          {ex.past_sessions[0].sets.length > 0 && (
-                            <span className="font-mono font-bold text-primary/90">
-                              {" "}
-                              —{" "}
-                              {ex.past_sessions[0].sets
-                                .map((s) => `${s.kg ?? 0}×${s.reps ?? 0}`)
-                                .join(", ")}
-                            </span>
-                          )}
+                        <p className="truncate text-xs font-mono font-bold text-primary/90">
+                          {ex.past_sessions[0].sets.length > 0
+                            ? formatPastSetsLine(ex.past_sessions[0].sets)
+                            : "—"}
                         </p>
                       </div>
                     </div>
-                    <ChevronDown className="size-4 shrink-0 text-primary/50 transition-transform duration-200 group-open:rotate-180" />
-                  </summary>
-                  <div className="space-y-3 border-t border-primary/10 px-3 pb-2 pt-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Last {ex.past_sessions.length} workout
-                      {ex.past_sessions.length === 1 ? "" : "s"}
-                    </p>
-                    <ul className="space-y-3">
-                      {ex.past_sessions.map((past) => (
-                        <li
-                          key={past.sessionId}
-                          className="rounded-lg border border-muted/60 bg-background/60 p-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 space-y-0.5">
-                              <p className="truncate text-sm font-bold tracking-tight">
-                                {past.workoutName}
-                              </p>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                {formatShortSessionDate(past.startedAt)}
-                              </p>
-                            </div>
-                            <Link
-                              href={`/history/${past.sessionId}`}
-                              className="shrink-0 text-[10px] font-black uppercase tracking-wider text-primary hover:underline"
-                            >
-                              Open
-                            </Link>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-                            {past.sets.map((s, i) => (
-                              <div key={i} className="flex items-baseline gap-1">
-                                <span className="text-[10px] font-bold text-muted-foreground/70">
-                                  Set {i + 1}:
-                                </span>
-                                <span className="text-xs font-black text-primary/90">
-                                  {s.kg ?? 0} kg × {s.reps ?? 0}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
-                </details>
-              )}
+                ) : (
+                  <details className="group mb-4 rounded-xl border border-primary/10 bg-primary/5 text-foreground animate-in fade-in zoom-in-95 duration-500 open:pb-2">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <TrendingUp className="size-3 shrink-0 text-primary" />
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-black uppercase tracking-[0.1em] text-primary/70">
+                            Last time
+                          </span>
+                          <p className="truncate text-xs font-mono font-bold text-primary/90">
+                            {ex.past_sessions[0].sets.length > 0
+                              ? formatPastSetsLine(ex.past_sessions[0].sets)
+                              : "—"}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronDown className="size-4 shrink-0 text-primary/50 transition-transform duration-200 group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-2 border-t border-primary/10 px-3 pb-2 pt-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Earlier (newest first)
+                      </p>
+                      <ul className="space-y-1.5">
+                        {ex.past_sessions.slice(1).map((past) => (
+                          <li
+                            key={past.sessionId}
+                            className="rounded-md border border-muted/50 bg-background/60 px-2.5 py-1.5"
+                          >
+                            <p className="text-xs font-mono font-bold text-primary/90">
+                              {past.sets.length > 0
+                                ? formatPastSetsLine(past.sets)
+                                : "—"}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </details>
+                ))}
               {ex.sets.length > 0 && (
                 <div className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 px-1 mb-1">
                   <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">KG</span>
@@ -522,7 +717,7 @@ export function ActiveWorkoutView({
               )}
               {ex.sets.map((set, index) => (
                 <div
-                  key={set.set_index}
+                  key={set.id}
                   className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 items-center animate-in fade-in slide-in-from-left-2 duration-300"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
@@ -535,7 +730,7 @@ export function ActiveWorkoutView({
                       placeholder="0"
                       value={set.kg ?? ""}
                       onChange={(e) =>
-                        handleSetChange(set.id, "kg", e.target.value === "" ? "" : parseFloat(e.target.value))
+                        handleSetChange(set.id, ex.exercise_id, "kg", e.target.value === "" ? "" : parseFloat(e.target.value))
                       }
                       className="h-9 rounded-xl font-bold bg-background/50 focus:bg-background transition-colors"
                     />
@@ -548,7 +743,7 @@ export function ActiveWorkoutView({
                       placeholder="0"
                       value={set.reps ?? ""}
                       onChange={(e) =>
-                        handleSetChange(set.id, "reps", e.target.value === "" ? "" : parseInt(e.target.value, 10))
+                        handleSetChange(set.id, ex.exercise_id, "reps", e.target.value === "" ? "" : parseInt(e.target.value, 10))
                       }
                       className="h-9 rounded-xl font-bold bg-background/50 focus:bg-background transition-colors"
                     />

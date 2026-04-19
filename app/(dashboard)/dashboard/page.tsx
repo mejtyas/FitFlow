@@ -1,11 +1,42 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { WorkoutSelector } from "@/components/workout-selector";
-import { Play, Plus, History as HistoryIcon, Activity, Flame, Calendar, ChevronRight, Dumbbell, ListOrdered } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  BarChart3,
+  Calendar,
+  ChevronRight,
+  Dumbbell,
+  Flame,
+  History as HistoryIcon,
+  ListOrdered,
+  Play,
+} from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+type SessionWithWorkoutName = {
+  id: string;
+  started_at: string;
+  ended_at?: string | null;
+  workouts: unknown;
+};
+
+function workoutNameFromRelation(workouts: unknown): string {
+  if (!workouts) return "Session";
+  if (Array.isArray(workouts)) {
+    const n = (workouts[0] as { name?: string } | undefined)?.name;
+    return n?.trim() || "Session";
+  }
+  if (typeof workouts === "object" && workouts !== null && "name" in workouts) {
+    const n = (workouts as { name?: string }).name;
+    return n?.trim() || "Session";
+  }
+  return "Session";
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -19,7 +50,6 @@ export default async function DashboardPage() {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // Run all independent queries in parallel
   const [
     { data: activeSession },
     { data: lastSession },
@@ -28,7 +58,6 @@ export default async function DashboardPage() {
     { data: exerciseData },
     { data: workouts },
   ] = await Promise.all([
-    // 1. Active session
     supabase
       .from("workout_sessions")
       .select("id, started_at, workout_id, workouts(name)")
@@ -37,7 +66,6 @@ export default async function DashboardPage() {
       .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    // 2. Last completed session
     supabase
       .from("workout_sessions")
       .select("id, started_at, ended_at, workouts(name)")
@@ -46,25 +74,21 @@ export default async function DashboardPage() {
       .order("ended_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    // 3. Total completed sessions count
     supabase
       .from("workout_sessions")
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id)
       .not("ended_at", "is", null),
-    // 4. Last 30 days sessions (for consistency + weekly count — bounded set)
     supabase
       .from("workout_sessions")
       .select("started_at, ended_at")
       .eq("user_id", user.id)
       .not("ended_at", "is", null)
       .gte("ended_at", thirtyDaysAgo.toISOString()),
-    // 5. Unique exercises via inner join (no need to fetch session IDs first)
     supabase
       .from("session_exercises")
       .select("exercise_id, workout_sessions!inner(user_id)")
       .eq("workout_sessions.user_id", user.id),
-    // 6. Available workouts
     supabase
       .from("workouts")
       .select("id, name")
@@ -75,157 +99,214 @@ export default async function DashboardPage() {
   const hasActiveSession = !!activeSession;
 
   const activeWorkoutName = hasActiveSession
-    ? (Array.isArray(activeSession.workouts)
-        ? (activeSession.workouts as any)[0]?.name
-        : (activeSession.workouts as any)?.name) ?? "Unnamed Session"
+    ? workoutNameFromRelation(activeSession.workouts)
     : null;
 
-  const lastWorkoutName = lastSession
-    ? (Array.isArray(lastSession.workouts)
-        ? (lastSession.workouts as any)[0]?.name
-        : (lastSession.workouts as any)?.name) ?? "Unnamed Session"
+  const lastSessionTyped = lastSession as SessionWithWorkoutName | null;
+  const lastWorkoutName = lastSessionTyped
+    ? workoutNameFromRelation(lastSessionTyped.workouts)
     : null;
 
-  // Weekly count: sessions from last 7 days (subset of 30-day data)
-  const weeklyWorkouts = last30DaySessions?.filter(
-    s => new Date(s.ended_at!) >= sevenDaysAgo
-  ).length ?? 0;
+  const weeklyWorkouts =
+    last30DaySessions?.filter((s) => new Date(s.ended_at!) >= sevenDaysAgo).length ?? 0;
 
-  // Consistency: unique days worked out in last 30 days
   const activeDaysInLast30 = new Set(
-    last30DaySessions?.map(s => new Date(s.started_at).toDateString())
+    last30DaySessions?.map((s) => new Date(s.started_at).toDateString())
   ).size;
   const consistency = Math.round((activeDaysInLast30 / 30) * 100);
 
-  // Unique exercises logged
-  const totalPRs = new Set(exerciseData?.map(e => e.exercise_id)).size;
+  const totalPRs = new Set(exerciseData?.map((e) => e.exercise_id)).size;
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  const displayName = user.email?.split("@")[0] ?? "there";
+
+  const quickLinks = [
+    { href: "/history", label: "History", icon: HistoryIcon },
+    { href: "/workouts", label: "Workouts", icon: ListOrdered },
+    { href: "/stats", label: "Stats", icon: BarChart3 },
+  ] as const;
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      {/* Welcome Header */}
-      <section className="flex flex-col gap-1">
-        <h1 className="text-3xl font-extrabold tracking-tight">
-          {greeting}, <span className="text-primary italic">{user.email?.split("@")[0]}</span>
-        </h1>
-        <p className="text-muted-foreground text-sm flex items-center gap-2 font-medium">
-          Ready to crush your goals today? <Flame className="size-4 text-orange-500 fill-orange-500" />
-        </p>
+    <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 space-y-6 md:space-y-8">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+            {greeting},{" "}
+            <span className="text-foreground">{displayName}</span>
+          </h1>
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Your overview — sessions, consistency, and the next thing to do.
+          </p>
+        </div>
+        {!hasActiveSession && (
+          <p className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Flame className="size-3.5 shrink-0 text-orange-500" strokeWidth={2} aria-hidden />
+            Total completed workouts:{" "}
+            <span className="tabular-nums text-foreground">{totalSessions ?? 0}</span>
+          </p>
+        )}
+        {hasActiveSession && (
+          <Link
+            href="/dashboard/active"
+            className="inline-flex w-fit items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-sm font-medium text-primary transition-colors duration-200 hover:bg-primary/10 cursor-pointer"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60 motion-reduce:animate-none" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            </span>
+            Resume: {activeWorkoutName}
+            <ArrowRight className="size-4" aria-hidden />
+          </Link>
+        )}
+      </header>
+
+      <section aria-label="Summary stats">
+        <ul className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4">
+          <li>
+            <div className="rounded-xl border bg-card px-3 py-3 shadow-sm transition-colors duration-200 sm:px-4 sm:py-4">
+              <div className="flex items-center justify-between gap-2">
+                <Calendar className="size-4 text-primary sm:size-5" aria-hidden />
+                <span className="text-lg font-semibold tabular-nums sm:text-xl md:text-2xl">
+                  {weeklyWorkouts}
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
+                This week
+              </p>
+            </div>
+          </li>
+          <li>
+            <div className="rounded-xl border bg-card px-3 py-3 shadow-sm transition-colors duration-200 sm:px-4 sm:py-4">
+              <div className="flex items-center justify-between gap-2">
+                <Activity className="size-4 text-primary sm:size-5" aria-hidden />
+                <span className="text-lg font-semibold tabular-nums sm:text-xl md:text-2xl">
+                  {consistency}%
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
+                30-day consistency
+              </p>
+            </div>
+          </li>
+          <li>
+            <div className="rounded-xl border bg-card px-3 py-3 shadow-sm transition-colors duration-200 sm:px-4 sm:py-4">
+              <div className="flex items-center justify-between gap-2">
+                <Dumbbell className="size-4 text-muted-foreground sm:size-5" aria-hidden />
+                <span className="text-lg font-semibold tabular-nums sm:text-xl md:text-2xl">
+                  {totalPRs}
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
+                Moves logged
+              </p>
+            </div>
+          </li>
+        </ul>
       </section>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-        <Card className="bg-primary/5 border-primary/10 shadow-none">
-          <CardContent className="p-4 flex flex-col items-center justify-center gap-1">
-            <Calendar className="size-5 text-primary" />
-            <span className="text-2xl font-bold">{weeklyWorkouts || 0}</span>
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Weekly Sessions</span>
-          </CardContent>
-        </Card>
-        <Card className="bg-secondary/50 border-secondary shadow-none">
-          <CardContent className="p-4 flex flex-col items-center justify-center gap-1">
-            <Activity className="size-5 text-secondary-foreground" />
-            <span className="text-2xl font-bold italic">{consistency}%</span>
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Consistency</span>
-          </CardContent>
-        </Card>
-        <Card className="hidden md:flex bg-muted/30 border-muted shadow-none">
-          <CardContent className="p-4 flex flex-col items-center justify-center gap-1 w-full">
-            <Dumbbell className="size-5 text-muted-foreground" />
-            <span className="text-2xl font-bold">{totalPRs}</span>
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Exercises logged</span>
-          </CardContent>
-        </Card>
-      </div>
+      <div className="grid gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+        <div className="space-y-4 lg:col-span-7">
+          {!hasActiveSession && (
+            <section aria-labelledby="start-heading">
+              <div className="mb-3 flex items-center gap-2">
+                <Play className="size-5 text-primary" fill="currentColor" aria-hidden />
+                <h2 id="start-heading" className="text-base font-semibold tracking-tight">
+                  Start a workout
+                </h2>
+              </div>
+              <Card className="border bg-card shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-semibold">Choose a routine</CardTitle>
+                  <CardDescription className="text-sm">
+                    Pick a saved workout, then hit Start.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 pt-0">
+                  <WorkoutSelector workouts={workouts} />
+                  {(!workouts || workouts.length === 0) && (
+                    <p className="text-center text-xs text-muted-foreground">
+                      No routines yet.{" "}
+                      <Link
+                        href="/workouts"
+                        className="font-medium text-primary underline-offset-4 hover:underline cursor-pointer"
+                      >
+                        Create one
+                      </Link>
+                      .
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+          )}
 
-      {/* Active Session / Quick Start Toggle */}
-      {hasActiveSession ? (
-        <section className="space-y-4">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Activity className="size-5 text-primary" />
-            Active Session
-          </h2>
-          <Card className="relative overflow-hidden border-none bg-primary shadow-2xl shadow-primary/30 text-primary-foreground animate-in zoom-in-95 duration-500">
-            <div className="absolute top-0 right-0 p-6 opacity-20">
-              <Activity className="size-24 -mr-8 -mt-8 animate-pulse" />
-            </div>
-            <div className="absolute top-0 right-0 p-4">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
-              </span>
-            </div>
-            <CardHeader className="relative z-10">
-              <CardTitle className="text-2xl font-black flex items-center gap-3">
-                Workout in Progress
-              </CardTitle>
-              <CardDescription className="text-primary-foreground/80 font-bold text-base">
-                You are currently doing "{activeWorkoutName}"
-              </CardDescription>
-            </CardHeader>
-            <CardFooter className="relative z-10">
-              <Button asChild size="lg" variant="secondary" className="w-full group font-black rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98]">
-                <Link href="/dashboard/active">
-                  Resume Session
-                  <ChevronRight className="ml-2 size-5 group-hover:translate-x-1 transition-transform" />
+          <section aria-label="Shortcuts">
+            <h3 className="sr-only">Shortcuts</h3>
+            <div className="flex flex-wrap gap-2">
+              {quickLinks.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="inline-flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs font-medium text-foreground transition-colors duration-200 hover:bg-muted cursor-pointer sm:text-sm"
+                >
+                  <Icon className="size-4 text-muted-foreground" aria-hidden />
+                  {label}
+                  <ChevronRight className="size-3.5 text-muted-foreground" aria-hidden />
                 </Link>
-              </Button>
-            </CardFooter>
-          </Card>
-        </section>
-      ) : (
-        <section className="space-y-4">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Play className="size-5 fill-primary text-primary" />
-            Start Workout
-          </h2>
-          
-          <Card className="border-none shadow-xl shadow-primary/5 bg-gradient-to-br from-card to-muted/20 relative">
-            <CardContent className="p-6 sm:p-8 flex flex-col items-center gap-4 relative">
-              <div className="flex-1 w-full max-w-md">
-                <WorkoutSelector workouts={workouts} />
-                {(!workouts || workouts.length === 0) && (
-                  <p className="mt-2 text-[10px] text-center text-muted-foreground font-medium italic">
-                    No routines found. <Link href="/workouts" className="text-primary hover:underline">Create one</Link>
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        </div>
 
-      {/* Recent Activity */}
-      {lastSession && (
-        <section className="space-y-4">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <HistoryIcon className="size-5 text-muted-foreground" />
-            Last Workout
-          </h2>
-          <Card className="overflow-hidden border-none bg-gradient-to-br from-card to-muted/30">
-            <CardContent className="p-0">
-              <div className="flex items-center p-5 gap-4">
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-secondary/20 text-secondary-foreground shrink-0 border border-secondary/20 shadow-inner">
-                  <Activity className="size-6" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold truncate">{lastWorkoutName}</h3>
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                    {new Date(lastSession.ended_at!).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon" className="rounded-full" asChild>
-                  <Link href={`/history/${lastSession.id}`}>
-                    <ChevronRight className="size-5" />
-                  </Link>
-                </Button>
+        <div className="lg:col-span-5 lg:min-h-0">
+          {lastSession && lastWorkoutName ? (
+            <section aria-labelledby="last-workout-heading" className="lg:sticky lg:top-6">
+              <div className="mb-3 flex items-center gap-2">
+                <HistoryIcon className="size-5 text-muted-foreground" aria-hidden />
+                <h2 id="last-workout-heading" className="text-base font-semibold tracking-tight">
+                  Last workout
+                </h2>
               </div>
-            </CardContent>
-          </Card>
-        </section>
-      )}
+              <Card className="overflow-hidden border bg-card shadow-sm">
+                <CardContent className="p-0">
+                  <div className="flex items-center gap-3 p-4 sm:p-5">
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <Activity className="size-5 text-foreground" aria-hidden />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{lastWorkoutName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(lastSession.ended_at!).toLocaleDateString(undefined, {
+                          weekday: "long",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" className="shrink-0 cursor-pointer" asChild>
+                      <Link href={`/history/${lastSession.id}`}>
+                        View
+                        <ArrowRight className="size-4" aria-hidden />
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+          ) : (
+            <section className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center lg:sticky lg:top-6">
+              <Dumbbell className="mx-auto size-8 text-muted-foreground" strokeWidth={1.5} aria-hidden />
+              <p className="mt-3 text-sm font-medium text-foreground">No completed workouts yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Start a routine to see your last session here.
+              </p>
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

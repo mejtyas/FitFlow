@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { updateCompletedSessionTimes } from "@/app/actions/workout-session";
 
 function isoToDatetimeLocal(iso: string): string {
   const d = new Date(iso);
@@ -49,12 +48,20 @@ export function EditSessionTimesForm({
       return;
     }
     startTransition(async () => {
-      const result = await updateCompletedSessionTimes(sessionId, {
-        startedAt,
-        endedAt,
+      const res = await fetch(`/api/sessions/${sessionId}/times`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startedAt, endedAt }),
       });
-      if (result.error) {
-        setError(result.error);
+      let data: { error?: string } = {};
+      try {
+        data = (await res.json()) as { error?: string };
+      } catch {
+        setError("Could not save times.");
+        return;
+      }
+      if (!res.ok || data.error) {
+        setError(data.error ?? "Could not save times.");
         return;
       }
       router.refresh();

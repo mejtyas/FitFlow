@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createWorkoutSession } from "@/lib/create-workout-session";
+import { updateCompletedSessionTimesForUser } from "@/lib/workout-session/update-completed-session-times";
 
 export async function startWorkout(workoutId: string | null) {
   const supabase = await createClient();
@@ -151,37 +152,14 @@ export async function updateCompletedSessionTimes(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const startMs = new Date(times.startedAt).getTime();
-  const endMs = new Date(times.endedAt).getTime();
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
-    return { error: "Invalid date." };
-  }
-  if (endMs <= startMs) {
-    return { error: "End time must be after start time." };
-  }
+  const result = await updateCompletedSessionTimesForUser(
+    supabase,
+    user.id,
+    sessionId,
+    times
+  );
+  if ("error" in result) return result;
 
-  const { data: existing } = await supabase
-    .from("workout_sessions")
-    .select("id, ended_at")
-    .eq("id", sessionId)
-    .eq("user_id", user.id)
-    .single();
-
-  if (!existing) return { error: "Session not found or access denied" };
-  if (!existing.ended_at) {
-    return { error: "Only completed sessions can be edited here." };
-  }
-
-  const { error } = await supabase
-    .from("workout_sessions")
-    .update({
-      started_at: times.startedAt,
-      ended_at: times.endedAt,
-    })
-    .eq("id", sessionId)
-    .eq("user_id", user.id);
-
-  if (error) return { error: error.message };
   revalidatePath("/history");
   revalidatePath(`/history/${sessionId}`);
   revalidatePath("/stats");

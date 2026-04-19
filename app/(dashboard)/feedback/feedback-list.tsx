@@ -4,14 +4,15 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setFeedbackSolved } from "@/app/actions/feedback";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Circle, Loader2, User } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Circle,
+  Loader2,
+  MessageSquareText,
+  UserRound,
+} from "lucide-react";
 
 export type FeedbackFilter = "open" | "solved" | "all";
 
@@ -48,6 +49,7 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedbackFilter>("open");
+  const [listError, setListError] = useState<string | null>(null);
 
   const openCount = useMemo(
     () => items.reduce((n, i) => n + (i.solved ? 0 : 1), 0),
@@ -65,22 +67,15 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
   }, [items, filter]);
 
   async function toggleSolved(id: string, next: boolean) {
+    setListError(null);
     setBusyId(id);
     const res = await setFeedbackSolved(id, next);
     setBusyId(null);
     if (res?.error) {
-      alert(res.error);
+      setListError(res.error);
       return;
     }
     router.refresh();
-  }
-
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground font-medium text-center py-12 border border-dashed rounded-2xl">
-        No notes yet — add something above.
-      </p>
-    );
   }
 
   const filterTabs: { key: FeedbackFilter; label: string; count: number }[] = [
@@ -89,118 +84,164 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
     { key: "all", label: "All", count: items.length },
   ];
 
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
+        <MessageSquareText
+          className="size-10 text-muted-foreground"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">No notes yet</p>
+          <p className="max-w-xs text-sm text-muted-foreground">
+            Use the composer to add your first note.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div
-        className="flex flex-wrap gap-2"
-        role="tablist"
-        aria-label="Filter by status"
-      >
-        {filterTabs.map(({ key, label, count }) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={filter === key}
-            onClick={() => setFilter(key)}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold transition-colors",
-              filter === key
-                ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                : "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
-          >
-            {label}
-            <span
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Inbox</h3>
+        <div
+          className="inline-flex rounded-lg border border-border bg-muted/50 p-1"
+          role="tablist"
+          aria-label="Filter by status"
+        >
+          {filterTabs.map(({ key, label, count }) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={filter === key}
+              onClick={() => {
+                setListError(null);
+                setFilter(key);
+              }}
               className={cn(
-                "rounded-full px-2 py-0.5 text-[11px] font-black tabular-nums",
+                "inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-200 sm:text-sm",
                 filter === key
-                  ? "bg-primary-foreground/20 text-primary-foreground"
-                  : "bg-background/80 text-foreground"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {count}
-            </span>
-          </button>
-        ))}
+              {label}
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums sm:text-xs",
+                  filter === key ? "bg-primary/10 text-primary" : "bg-background/60 text-foreground"
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
+      {listError && (
+        <div
+          role="alert"
+          className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+        >
+          <AlertCircle className="size-4 shrink-0" aria-hidden />
+          {listError}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground font-medium text-center py-12 border border-dashed rounded-2xl">
-          {filter === "open"
-            ? "Nothing open — switch to Solved or All, or add a note above."
-            : filter === "solved"
-              ? "Nothing solved yet."
-              : "No notes to show."}
-        </p>
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            {filter === "open"
+              ? "Nothing open — try Solved or All, or add a new note."
+              : filter === "solved"
+                ? "Nothing marked solved yet."
+                : "No notes match this filter."}
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-4">
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           {filtered.map((item) => {
             const busy = busyId === item.id;
             return (
               <li key={item.id}>
-                <Card
-                  className={
+                <article
+                  className={cn(
+                    "flex gap-3 p-4 transition-colors duration-200 sm:gap-4 sm:p-4",
                     item.solved
-                      ? "border-muted bg-muted/20 opacity-90"
-                      : "border-none shadow-xl shadow-primary/5 bg-gradient-to-br from-card to-muted/20"
-                  }
+                      ? "bg-muted/20"
+                      : "bg-card hover:bg-muted/30"
+                  )}
                 >
-                  <CardHeader className="pb-2 space-y-2">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <User className="size-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <CardTitle className="text-base font-bold truncate">
-                            {formatAuthor(item.author_email)}
-                          </CardTitle>
-                          <p className="text-[11px] text-muted-foreground font-medium truncate">
-                            {item.author_email}
-                          </p>
-                        </div>
+                  <div
+                    className={cn(
+                      "flex size-9 shrink-0 items-center justify-center rounded-full",
+                      item.solved ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
+                    )}
+                    aria-hidden
+                  >
+                    <UserRound className="size-4" />
+                  </div>
+
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {formatAuthor(item.author_email)}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{item.author_email}</p>
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                        <time
+                          dateTime={item.created_at}
+                          className="text-[11px] font-medium tabular-nums text-muted-foreground sm:text-xs"
+                        >
                           {formatWhen(item.created_at)}
-                        </span>
+                        </time>
                         {item.solved ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-primary">
-                            <CheckCircle2 className="size-3" />
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                            <CheckCircle2 className="size-3" aria-hidden />
                             Solved
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                            <Circle className="size-3" />
+                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <Circle className="size-3" aria-hidden />
                             Open
                           </span>
                         )}
                       </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4 pt-0">
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium">
+
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
                       {item.body}
                     </p>
-                    <Button
-                      type="button"
-                      variant={item.solved ? "outline" : "default"}
-                      size="sm"
-                      className="rounded-xl font-bold"
-                      disabled={busy}
-                      onClick={() => toggleSolved(item.id, !item.solved)}
-                    >
-                      {busy ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : item.solved ? (
-                        "Mark open"
-                      ) : (
-                        "Mark solved"
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant={item.solved ? "outline" : "default"}
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => toggleSolved(item.id, !item.solved)}
+                        className="cursor-pointer rounded-lg font-semibold transition-colors duration-200"
+                      >
+                        {busy ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                            Updating…
+                          </>
+                        ) : item.solved ? (
+                          "Mark open"
+                        ) : (
+                          "Mark solved"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </article>
               </li>
             );
           })}

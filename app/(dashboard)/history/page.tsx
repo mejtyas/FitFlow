@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ExportButtons } from "./export-buttons";
 import { ClearHistoryButton } from "./clear-history-button";
 import { HistoryItem } from "./history-item";
-import { History as HistoryIcon, TrendingUp, Clock, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  History as HistoryIcon,
+  Timer,
+  Trophy,
+} from "lucide-react";
 
 const PAGE_SIZE = 10;
 
@@ -41,6 +43,27 @@ function getMonthYear(iso: string): string {
   });
 }
 
+function workoutNameFromRelation(workouts: unknown): string {
+  if (!workouts) return "Session";
+  if (Array.isArray(workouts)) {
+    const n = (workouts[0] as { name?: string } | undefined)?.name;
+    return n?.trim() || "Session";
+  }
+  if (typeof workouts === "object" && workouts !== null && "name" in workouts) {
+    const n = (workouts as { name?: string }).name;
+    return n?.trim() || "Session";
+  }
+  return "Session";
+}
+
+function formatTrainTime(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
 export default async function HistoryPage({
   searchParams,
 }: {
@@ -57,7 +80,6 @@ export default async function HistoryPage({
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  // Run paginated query and count query in parallel
   const [{ data: sessions }, { count: totalSessions }, { data: statsData }] = await Promise.all([
     supabase
       .from("workout_sessions")
@@ -81,159 +103,166 @@ export default async function HistoryPage({
   const totalCount = totalSessions ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  // Calculate training time from stats query
   let totalMinutes = 0;
   statsData?.forEach((s) => {
     if (s.ended_at) {
-      totalMinutes += Math.floor((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000);
+      totalMinutes += Math.floor(
+        (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000
+      );
     }
   });
-  const totalHours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
 
-  // Group by month/year
-  const groupedSessions: Record<string, typeof sessions> = {};
+  const avgMinutes =
+    totalCount > 0 ? Math.round(totalMinutes / totalCount) : 0;
+
+  const groupedSessions: Record<string, NonNullable<typeof sessions>> = {};
   sessions?.forEach((s) => {
     const key = getMonthYear(s.started_at);
     if (!groupedSessions[key]) groupedSessions[key] = [];
-    groupedSessions[key].push(s);
+    groupedSessions[key]!.push(s);
   });
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
-            <HistoryIcon className="size-8 text-primary" />
+    <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 space-y-6 md:space-y-8">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight md:text-3xl">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <HistoryIcon className="size-[1.35rem]" aria-hidden />
+            </span>
             History
           </h1>
-          <p className="text-muted-foreground text-sm font-medium">
-            Review your past training sessions and track your progress.
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Completed workouts, newest first. Export or clear from the toolbar.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <ClearHistoryButton />
-          <ExportButtons />
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <ClearHistoryButton disabled={totalCount === 0} />
+          <ExportButtons disabled={totalCount === 0} />
         </div>
-      </div>
+      </header>
 
-      {/* History Stats */}
       {totalCount > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Card className="bg-primary/5 border-primary/10 shadow-none">
-            <CardHeader className="p-4 pb-0">
-              <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                <Trophy className="size-3 text-primary" />
-                Total Sessions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-1">
-              <span className="text-2xl font-black">{totalCount}</span>
-            </CardContent>
-          </Card>
-          <Card className="bg-primary/5 border-primary/10 shadow-none">
-            <CardHeader className="p-4 pb-0">
-              <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                <Clock className="size-3 text-primary" />
-                Training Time
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-1">
-              <span className="text-2xl font-black">{totalHours}h {remainingMinutes}m</span>
-            </CardContent>
-          </Card>
-          <Card className="bg-primary/5 border-primary/10 shadow-none">
-            <CardHeader className="p-4 pb-0">
-              <CardTitle className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                <TrendingUp className="size-3 text-primary" />
-                Improvement
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-1 text-2xl font-black">
-              +12%
-            </CardContent>
-          </Card>
-        </div>
+        <section aria-label="History summary">
+          <ul className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4">
+            <li>
+              <div className="rounded-xl border bg-card px-3 py-3 shadow-sm sm:px-4 sm:py-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Trophy className="size-4 text-primary sm:size-5" aria-hidden />
+                  <span className="text-lg font-semibold tabular-nums sm:text-xl md:text-2xl">
+                    {totalCount}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
+                  Sessions
+                </p>
+              </div>
+            </li>
+            <li>
+              <div className="rounded-xl border bg-card px-3 py-3 shadow-sm sm:px-4 sm:py-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Clock className="size-4 text-primary sm:size-5" aria-hidden />
+                  <span className="text-lg font-semibold tabular-nums sm:text-xl md:text-2xl">
+                    {formatTrainTime(totalMinutes)}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
+                  Total time
+                </p>
+              </div>
+            </li>
+            <li>
+              <div className="rounded-xl border bg-card px-3 py-3 shadow-sm sm:px-4 sm:py-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Timer className="size-4 text-muted-foreground sm:size-5" aria-hidden />
+                  <span className="text-lg font-semibold tabular-nums sm:text-xl md:text-2xl">
+                    {totalCount > 0 ? formatTrainTime(avgMinutes) : "—"}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
+                  Avg session
+                </p>
+              </div>
+            </li>
+          </ul>
+        </section>
       )}
 
-      {(!sessions || sessions.length === 0) ? (
-        <Card className="border-dashed bg-muted/20">
-          <CardContent className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-            <div className="size-16 rounded-full bg-muted flex items-center justify-center">
-              <HistoryIcon className="size-8 text-muted-foreground" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-xl font-bold">No history yet</p>
-              <p className="text-muted-foreground max-w-xs">
-                Once you complete a workout, it will appear here for you to track.
-              </p>
-            </div>
-            <Button asChild size="lg" className="rounded-full px-8 shadow-lg shadow-primary/20">
-              <Link href="/dashboard">Start first workout</Link>
-            </Button>
-          </CardContent>
-        </Card>
+      {!sessions || sessions.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center">
+          <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+            <HistoryIcon className="size-7 text-muted-foreground" strokeWidth={1.5} aria-hidden />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-foreground">No history yet</p>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Finish a workout and it will show up here with duration and details.
+            </p>
+          </div>
+          <Button asChild className="cursor-pointer rounded-lg font-semibold">
+            <Link href="/dashboard">Go to dashboard</Link>
+          </Button>
+        </div>
       ) : (
-        <div className="space-y-10">
+        <div className="space-y-8">
           {Object.entries(groupedSessions).map(([monthYear, monthSessions]) => (
-            <div key={monthYear} className="space-y-4">
-              <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-3">
-                <span className="size-1.5 rounded-full bg-primary" />
+            <section key={monthYear} aria-labelledby={`history-${monthYear.replace(/\s+/g, "-")}`}>
+              <h2
+                id={`history-${monthYear.replace(/\s+/g, "-")}`}
+                className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                <CalendarClock className="size-4 text-muted-foreground" aria-hidden />
                 {monthYear}
               </h2>
-              <div className="grid gap-3">
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm">
                 {monthSessions!.map((s) => (
                   <HistoryItem
                     key={s.id}
                     sessionId={s.id}
-                    workoutName={(Array.isArray(s.workouts) ? (s.workouts as { name: string }[])[0]?.name : (s.workouts as { name: string } | null)?.name) ?? "Unnamed Session"}
+                    workoutName={workoutNameFromRelation(s.workouts)}
                     dateStr={formatDate(s.started_at)}
                     durationStr={formatDuration(s.started_at, s.ended_at)}
                   />
                 ))}
-              </div>
-            </div>
+              </ul>
+            </section>
           ))}
 
-          {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                asChild
-                disabled={page <= 1}
-              >
-                <Link
-                  href={page <= 1 ? "/history" : `/history?page=${page - 1}`}
-                  aria-disabled={page <= 1}
-                  className={page <= 1 ? "pointer-events-none opacity-50" : ""}
-                >
-                  <ChevronLeft className="size-4" />
+            <nav
+              className="flex flex-wrap items-center justify-center gap-2 pt-2"
+              aria-label="Pagination"
+            >
+              {page <= 1 ? (
+                <Button variant="outline" size="sm" className="gap-1.5" disabled>
+                  <ChevronLeft className="size-4" aria-hidden />
                   Previous
-                </Link>
-              </Button>
-              <span className="text-sm text-muted-foreground px-3">
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="cursor-pointer gap-1.5" asChild>
+                  <Link href={`/history?page=${page - 1}`} scroll>
+                    <ChevronLeft className="size-4" aria-hidden />
+                    Previous
+                  </Link>
+                </Button>
+              )}
+              <span className="px-3 text-sm tabular-nums text-muted-foreground">
                 Page {page} of {totalPages}
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                asChild
-                disabled={page >= totalPages}
-              >
-                <Link
-                  href={page >= totalPages ? `/history?page=${totalPages}` : `/history?page=${page + 1}`}
-                  aria-disabled={page >= totalPages}
-                  className={page >= totalPages ? "pointer-events-none opacity-50" : ""}
-                >
+              {page >= totalPages ? (
+                <Button variant="outline" size="sm" className="gap-1.5" disabled>
                   Next
-                  <ChevronRight className="size-4" />
-                </Link>
-              </Button>
-            </div>
+                  <ChevronRight className="size-4" aria-hidden />
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="cursor-pointer gap-1.5" asChild>
+                  <Link href={`/history?page=${page + 1}`} scroll>
+                    Next
+                    <ChevronRight className="size-4" aria-hidden />
+                  </Link>
+                </Button>
+              )}
+            </nav>
           )}
         </div>
       )}

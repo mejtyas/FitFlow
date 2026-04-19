@@ -6,7 +6,7 @@ import { deleteCompletedWorkoutHistory } from "@/app/actions/workout-session";
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 
-export function ClearHistoryButton() {
+export function ClearHistoryButton({ disabled }: { disabled?: boolean }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -29,11 +29,11 @@ export function ClearHistoryButton() {
 
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
-      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 font-bold rounded-xl px-4 h-9 transition-all flex items-center gap-2"
+      className="cursor-pointer rounded-lg font-medium text-muted-foreground transition-colors duration-200 hover:border-destructive/40 hover:bg-destructive/5 hover:text-destructive disabled:opacity-40"
       onClick={handleClear}
-      disabled={loading}
+      disabled={loading || disabled}
     >
       {loading ? (
         <Loader2 className="size-4 animate-spin" />
