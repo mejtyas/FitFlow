@@ -1,19 +1,19 @@
-import { createClient } from "@/lib/supabase/server";
-import { ExerciseList } from "./exercise-list";
-import { Dumbbell } from "lucide-react";
+import { createClient } from '@/lib/supabase/server';
+import { ExerciseList } from './exercise-list';
+import { Dumbbell } from 'lucide-react';
 
 export default async function ExercisesPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {return null;}
 
   const { data: exercises } = await supabase
-    .from("exercises")
-    .select("id, name, description, created_at")
-    .eq("user_id", user.id)
-    .order("name");
+    .from('exercises')
+    .select('id, name, description, created_at')
+    .eq('user_id', user.id)
+    .order('name');
 
   const items = exercises ?? [];
 
@@ -31,8 +31,8 @@ export default async function ExercisesPage() {
         </p>
         {items.length > 0 && (
           <p className="text-xs font-medium text-muted-foreground">
-            <span className="tabular-nums text-foreground">{items.length}</span>{" "}
-            {items.length === 1 ? "exercise" : "exercises"}
+            <span className="tabular-nums text-foreground">{items.length}</span>{' '}
+            {items.length === 1 ? 'exercise' : 'exercises'}
           </p>
         )}
       </header>

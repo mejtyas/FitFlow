@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useTransition } from "react";
-import { deleteWorkout } from "@/app/actions/workouts";
-import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { useTransition } from 'react';
+import { deleteWorkout } from '@/app/actions/workouts';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
 
 export function DeleteWorkoutForm({
   id,

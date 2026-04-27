@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { LoginForm } from "./login-form";
+import Link from 'next/link';
+import { LoginForm } from './login-form';
 
 // Middleware already redirects authenticated users away from /login
 export default function LoginPage() {
@@ -11,7 +11,7 @@ export default function LoginPage() {
       </div>
       <LoginForm />
       <p className="text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
+        Don&apos;t have an account?{' '}
         <Link href="/register" className="font-medium text-primary underline-offset-4 hover:underline">
           Register
         </Link>

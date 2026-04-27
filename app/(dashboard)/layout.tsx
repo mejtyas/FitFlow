@@ -1,11 +1,11 @@
-import { redirect } from "next/navigation";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { DashboardNav } from "@/components/dashboard-nav";
-import { signOut } from "@/app/actions/auth";
-import { LogOut, User, Activity } from "lucide-react";
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/server';
+import { DashboardNav } from '@/components/dashboard-nav';
+import { signOut } from '@/app/actions/auth';
+import { LogOut, User, Activity } from 'lucide-react';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export default async function DashboardLayout({
   children,
@@ -16,14 +16,14 @@ export default async function DashboardLayout({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) {redirect('/login');}
 
   const { data: activeSession } = await supabase
-    .from("workout_sessions")
-    .select("id")
-    .eq("user_id", user.id)
-    .is("ended_at", null)
-    .order("started_at", { ascending: false })
+    .from('workout_sessions')
+    .select('id')
+    .eq('user_id', user.id)
+    .is('ended_at', null)
+    .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -51,7 +51,7 @@ export default async function DashboardLayout({
               <User className="size-6" />
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="truncate text-sm font-semibold">{user.email?.split("@")[0]}</p>
+              <p className="truncate text-sm font-semibold">{user.email?.split('@')[0]}</p>
               <p className="truncate text-[10px] text-muted-foreground uppercase tracking-widest">Athlete</p>
             </div>
           </Link>

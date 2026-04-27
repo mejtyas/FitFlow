@@ -1,39 +1,41 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from '@/lib/supabase/server';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Dumbbell, Clock, Calendar } from "lucide-react";
+} from '@/components/ui/card';
+import { Dumbbell, Clock, Calendar } from 'lucide-react';
 
 export default async function StatsPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {return null;}
 
   const { count: totalWorkouts } = await supabase
-    .from("workout_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .not("ended_at", "is", null);
+    .from('workout_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .not('ended_at', 'is', null);
 
   const { data: sessions } = await supabase
-    .from("workout_sessions")
-    .select("id, started_at, ended_at")
-    .eq("user_id", user.id)
-    .not("ended_at", "is", null);
+    .from('workout_sessions')
+    .select('id, started_at, ended_at')
+    .eq('user_id', user.id)
+    .not('ended_at', 'is', null);
 
-  let totalMinutes = 0;
-  for (const s of sessions ?? []) {
-    if (s.ended_at) {
-      totalMinutes +=
-        (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) /
-        60000;
+  const totalMinutes = (sessions ?? []).reduce((sum, s) => {
+    if (!s.ended_at) {
+      return sum;
     }
-  }
+    return (
+      sum +
+      (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) /
+        60000
+    );
+  }, 0);
   const totalHours = Math.floor(totalMinutes / 60);
   const remainderMins = Math.round(totalMinutes % 60);
   const totalTimeStr =
@@ -41,22 +43,30 @@ export default async function StatsPage() {
 
   const ids = (sessions ?? []).map((s) => s.id);
 
-  let countByExercise: Record<string, { name: string; count: number }> = {};
-  if (ids.length > 0) {
-    const { data: exerciseRows } = await supabase
-      .from("session_exercises")
-      .select("exercise_id, exercises(name)")
-      .in("workout_session_id", ids);
-    for (const row of exerciseRows ?? []) {
-      const ex = row.exercises as { name: string } | { name: string }[] | null;
-      const name = (Array.isArray(ex) ? ex[0]?.name : ex?.name) ?? "?";
-      const id = row.exercise_id;
-      if (!countByExercise[id]) countByExercise[id] = { name, count: 0 };
-      countByExercise[id].count++;
-    }
-  }
+  const countByExercise: Record<string, { name: string; count: number }> =
+    ids.length > 0
+      ? (
+          await supabase
+            .from('session_exercises')
+            .select('exercise_id, exercises(name)')
+            .in('workout_session_id', ids)
+        ).data?.reduce<Record<string, { name: string; count: number }>>(
+          (acc, row) => {
+            const ex = row.exercises as
+              | { name: string }
+              | { name: string }[]
+              | null;
+            const name = (Array.isArray(ex) ? ex[0]?.name : ex?.name) ?? '?';
+            const id = row.exercise_id;
+            const prev = acc[id] ?? { name, count: 0 };
+            acc[id] = { ...prev, count: prev.count + 1 };
+            return acc;
+          },
+          {}
+        ) ?? {}
+      : {};
   const topExercises = Object.entries(countByExercise)
-    .map(([_, v]) => v)
+    .map(([, v]) => v)
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 

@@ -1,15 +1,15 @@
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
-import { StartWorkoutButton } from "@/components/start-workout-button";
-import { DeleteWorkoutForm } from "./delete-workout-form";
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/server';
+import { Button } from '@/components/ui/button';
+import { StartWorkoutButton } from '@/components/start-workout-button';
+import { DeleteWorkoutForm } from './delete-workout-form';
 import {
   ChevronRight,
   Dumbbell,
   Edit2,
   ListOrdered,
   Plus,
-} from "lucide-react";
+} from 'lucide-react';
 
 type WorkoutExerciseRow = {
   id: string;
@@ -26,21 +26,21 @@ type WorkoutListRow = {
 };
 
 function exerciseNameFromJoin(
-  exercises: WorkoutExerciseRow["exercises"]
+  exercises: WorkoutExerciseRow['exercises']
 ): string | null {
-  if (!exercises) return null;
-  if (Array.isArray(exercises)) return exercises[0]?.name?.trim() ?? null;
+  if (!exercises) {return null;}
+  if (Array.isArray(exercises)) {return exercises[0]?.name?.trim() ?? null;}
   return exercises.name?.trim() ?? null;
 }
 
 function exercisePreview(workoutExercises: WorkoutExerciseRow[] | null, maxNames = 3): string {
-  if (!workoutExercises?.length) return "No exercises yet — add some when you edit.";
+  if (!workoutExercises?.length) {return 'No exercises yet — add some when you edit.';}
   const ordered = [...workoutExercises].sort((a, b) => a.order_index - b.order_index);
   const names = ordered
     .map((we) => exerciseNameFromJoin(we.exercises))
     .filter((n): n is string => Boolean(n?.trim()));
-  if (names.length === 0) return "No exercise names loaded.";
-  const shown = names.slice(0, maxNames).join(", ");
+  if (names.length === 0) {return 'No exercise names loaded.';}
+  const shown = names.slice(0, maxNames).join(', ');
   return names.length > maxNames ? `${shown}…` : shown;
 }
 
@@ -49,15 +49,15 @@ export default async function WorkoutsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {return null;}
 
   const { data: workoutsRaw } = await supabase
-    .from("workouts")
+    .from('workouts')
     .select(
-      "id, name, created_at, workout_exercises(id, order_index, default_sets, exercises(name))"
+      'id, name, created_at, workout_exercises(id, order_index, default_sets, exercises(name))'
     )
-    .eq("user_id", user.id)
-    .order("name");
+    .eq('user_id', user.id)
+    .order('name');
 
   const workouts = (workoutsRaw ?? []) as unknown as WorkoutListRow[];
   const total = workouts.length;
@@ -77,8 +77,8 @@ export default async function WorkoutsPage() {
           </p>
           {total > 0 && (
             <p className="text-xs font-medium text-muted-foreground">
-              <span className="tabular-nums text-foreground">{total}</span>{" "}
-              {total === 1 ? "routine" : "routines"}
+              <span className="tabular-nums text-foreground">{total}</span>{' '}
+              {total === 1 ? 'routine' : 'routines'}
             </p>
           )}
         </div>
@@ -138,7 +138,7 @@ export default async function WorkoutsPage() {
                           {w.name}
                         </Link>
                         <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          {exerciseCount} {exerciseCount === 1 ? "exercise" : "exercises"}
+                          {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
                         </span>
                       </div>
                       <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground">

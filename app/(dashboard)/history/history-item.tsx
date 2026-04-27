@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { deleteWorkoutSession } from "@/app/actions/workout-session";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { deleteWorkoutSession } from '@/app/actions/workout-session';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Activity,
   AlertCircle,
@@ -14,7 +14,7 @@ import {
   Clock,
   Loader2,
   Trash2,
-} from "lucide-react";
+} from 'lucide-react';
 
 type HistoryItemProps = {
   sessionId: string;
@@ -37,7 +37,7 @@ export function HistoryItem({
     e.preventDefault();
     e.stopPropagation();
     setError(null);
-    if (!confirm("Delete this workout? This cannot be undone.")) return;
+    if (!confirm('Delete this workout? This cannot be undone.')) {return;}
     setBusy(true);
     const result = await deleteWorkoutSession(sessionId);
     setBusy(false);
@@ -105,7 +105,7 @@ export function HistoryItem({
         <div
           role="alert"
           className={cn(
-            "flex items-center gap-2 border-t border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive sm:px-5"
+            'flex items-center gap-2 border-t border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive sm:px-5'
           )}
         >
           <AlertCircle className="size-3.5 shrink-0" aria-hidden />

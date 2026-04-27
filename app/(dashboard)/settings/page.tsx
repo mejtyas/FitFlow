@@ -1,20 +1,20 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from '@/lib/supabase/server';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Settings as SettingsIcon, User, Mail, ShieldAlert } from "lucide-react";
-import { DeleteDataButton } from "./delete-data-button";
+} from '@/components/ui/card';
+import { Settings as SettingsIcon, User, Mail, ShieldAlert } from 'lucide-react';
+import { DeleteDataButton } from './delete-data-button';
 
 export default async function SettingsPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {return null;}
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">

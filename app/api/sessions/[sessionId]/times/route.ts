@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import { updateCompletedSessionTimesForUser } from "@/lib/workout-session/update-completed-session-times";
-import { isValidUuid } from "@/lib/validation";
+import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import { requireApiUser } from '@/lib/api/require-api-user';
+import { updateCompletedSessionTimesForUser } from '@/lib/workout-session/update-completed-session-times';
+import { isValidUuid } from '@/lib/validation';
 
 export async function POST(
   request: Request,
@@ -10,44 +10,39 @@ export async function POST(
 ) {
   const { sessionId } = await context.params;
   if (!isValidUuid(sessionId)) {
-    return NextResponse.json({ error: "Invalid session id." }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid session id.' }, { status: 400 });
   }
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const body: unknown = await request.json().catch(() => null);
+  if (body === null) {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
   if (
-    typeof body !== "object" ||
+    typeof body !== 'object' ||
     body === null ||
-    !("startedAt" in body) ||
-    !("endedAt" in body)
+    !('startedAt' in body) ||
+    !('endedAt' in body)
   ) {
     return NextResponse.json(
-      { error: "Expected startedAt and endedAt strings." },
+      { error: 'Expected startedAt and endedAt strings.' },
       { status: 400 }
     );
   }
 
   const startedAt = (body as { startedAt?: unknown }).startedAt;
   const endedAt = (body as { endedAt?: unknown }).endedAt;
-  if (typeof startedAt !== "string" || typeof endedAt !== "string") {
+  if (typeof startedAt !== 'string' || typeof endedAt !== 'string') {
     return NextResponse.json(
-      { error: "startedAt and endedAt must be strings." },
+      { error: 'startedAt and endedAt must be strings.' },
       { status: 400 }
     );
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = await requireApiUser();
+  if (!auth.ok) {
+    return auth.response;
   }
+  const { supabase, user } = auth;
 
   const result = await updateCompletedSessionTimesForUser(
     supabase,
@@ -56,15 +51,15 @@ export async function POST(
     { startedAt, endedAt }
   );
 
-  if ("error" in result) {
+  if ('error' in result) {
     const status =
-      result.error === "Session not found or access denied" ? 404 : 400;
+      result.error === 'Session not found or access denied' ? 404 : 400;
     return NextResponse.json({ error: result.error }, { status });
   }
 
-  revalidatePath("/history");
+  revalidatePath('/history');
   revalidatePath(`/history/${sessionId}`);
-  revalidatePath("/stats");
+  revalidatePath('/stats');
 
   return NextResponse.json({ ok: true });
 }

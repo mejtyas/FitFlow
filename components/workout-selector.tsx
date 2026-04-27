@@ -1,11 +1,12 @@
-"use client";
+'use client';
 
-import { useState, useRef, useEffect, useTransition } from "react";
-import { ListOrdered, ChevronDown, Check, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
-import { startWorkout } from "@/app/actions/workout-session";
+import { useState, useRef, useEffect, useTransition } from 'react';
+import { ListOrdered, ChevronDown, Check, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
+import { startWorkout } from '@/app/actions/workout-session';
+import { navigateAfterStartWorkout } from '@/lib/client/navigate-after-start-workout';
 
 interface WorkoutSelectorProps {
   workouts: { id: string; name: string }[] | null;
@@ -30,38 +31,15 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
         setIsOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleStart = () => {
-    if (!selectedWorkout) return;
+    if (!selectedWorkout) {return;}
     startTransition(async () => {
       const result = await startWorkout(selectedWorkout.id);
-
-      if ("error" in result && result.error) {
-        if (
-          result.error === "active_session_exists" &&
-          "existingSessionId" in result &&
-          typeof result.existingSessionId === "string"
-        ) {
-          const resume = window.confirm(
-            "You already have an active workout. Open it instead of starting a new one?"
-          );
-          if (resume) {
-            router.push(`/dashboard/active?session=${result.existingSessionId}`);
-            router.refresh();
-          }
-          return;
-        }
-        console.error(result.error);
-        return;
-      }
-
-      if ("sessionId" in result && result.sessionId) {
-        router.push(`/dashboard/active?session=${result.sessionId}`);
-        router.refresh();
-      }
+      navigateAfterStartWorkout(router, result);
     });
   };
 
@@ -72,25 +50,25 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            "w-full h-12 pl-10 pr-10 rounded-2xl bg-background border border-border transition-all font-bold text-sm text-left flex items-center relative",
+            'w-full h-12 pl-10 pr-10 rounded-2xl bg-background border border-border transition-all font-bold text-sm text-left flex items-center relative',
             isOpen
-              ? "ring-2 ring-primary/20 border-primary/50 shadow-lg shadow-primary/5"
-              : "hover:border-primary/30"
+              ? 'ring-2 ring-primary/20 border-primary/50 shadow-lg shadow-primary/5'
+              : 'hover:border-primary/30'
           )}
         >
           <ListOrdered className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <span
             className={cn(
-              "truncate",
-              !selectedWorkout && "text-muted-foreground font-medium"
+              'truncate',
+              !selectedWorkout && 'text-muted-foreground font-medium'
             )}
           >
-            {selectedWorkout ? selectedWorkout.name : "Choose Routine..."}
+            {selectedWorkout ? selectedWorkout.name : 'Choose Routine...'}
           </span>
           <ChevronDown
             className={cn(
-              "absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground transition-transform duration-300",
-              isOpen && "rotate-180"
+              'absolute right-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground transition-transform duration-300',
+              isOpen && 'rotate-180'
             )}
           />
         </button>
@@ -108,10 +86,10 @@ export function WorkoutSelector({ workouts }: WorkoutSelectorProps) {
                       setIsOpen(false);
                     }}
                     className={cn(
-                      "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-colors mb-0.5 last:mb-0",
+                      'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-colors mb-0.5 last:mb-0',
                       selectedWorkout?.id === w.id
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-muted text-foreground"
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted text-foreground'
                     )}
                   >
                     <span className="truncate pr-2">{w.name}</span>

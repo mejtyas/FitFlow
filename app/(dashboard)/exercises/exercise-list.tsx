@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { createExercise, deleteExercise } from "@/app/actions/exercises";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { createExercise, deleteExercise } from '@/app/actions/exercises';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   AlertCircle,
   Dumbbell,
@@ -16,23 +16,23 @@ import {
   Search,
   Trash2,
   X,
-} from "lucide-react";
-import Link from "next/link";
+} from 'lucide-react';
+import Link from 'next/link';
 
 type Exercise = { id: string; name: string; description: string | null; created_at: string };
 
 export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) {
   const router = useRouter();
   const [exercises, setExercises] = useState(initial);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [newName, setNewName] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyDeleteId, setBusyDeleteId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editDescription, setEditDescription] = useState("");
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
     setExercises(initial);
@@ -40,18 +40,18 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
 
   const filteredExercises = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return exercises;
+    if (!q) {return exercises;}
     return exercises.filter((ex) => ex.name.toLowerCase().includes(q));
   }, [exercises, searchQuery]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!newName.trim()) {return;}
     setError(null);
     setLoading(true);
     const formData = new FormData();
-    formData.set("name", newName.trim());
-    if (newDescription.trim()) formData.set("description", newDescription.trim());
+    formData.set('name', newName.trim());
+    if (newDescription.trim()) {formData.set('description', newDescription.trim());}
     const result = await createExercise(formData);
     setLoading(false);
     if (result.error) {
@@ -59,13 +59,13 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
       return;
     }
     setError(null);
-    setNewName("");
-    setNewDescription("");
+    setNewName('');
+    setNewDescription('');
     router.refresh();
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this exercise? It will be removed from all workouts.")) return;
+    if (!confirm('Delete this exercise? It will be removed from all workouts.')) {return;}
     setError(null);
     setBusyDeleteId(id);
     const result = await deleteExercise(id);
@@ -81,17 +81,17 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
   function startEdit(ex: Exercise) {
     setEditingId(ex.id);
     setEditName(ex.name);
-    setEditDescription(ex.description ?? "");
+    setEditDescription(ex.description ?? '');
   }
 
   async function saveEdit(id: string) {
-    if (!editName.trim()) return;
+    if (!editName.trim()) {return;}
     setError(null);
     setLoading(true);
     const formData = new FormData();
-    formData.set("name", editName.trim());
-    if (editDescription.trim()) formData.set("description", editDescription.trim());
-    const { updateExercise } = await import("@/app/actions/exercises");
+    formData.set('name', editName.trim());
+    if (editDescription.trim()) {formData.set('description', editDescription.trim());}
+    const { updateExercise } = await import('@/app/actions/exercises');
     const result = await updateExercise(id, formData);
     setLoading(false);
     if (result.error) {
@@ -152,7 +152,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
               </div>
               <div className="space-y-2">
                 <Label htmlFor="new-description" className="text-sm font-medium">
-                  Notes{" "}
+                  Notes{' '}
                   <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
                 <Input
@@ -200,7 +200,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={() => setSearchQuery('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Clear search"
             >
@@ -219,7 +219,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
             id="exercise-library-heading"
             className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            Library{" "}
+            Library{' '}
             <span className="tabular-nums text-foreground">{filteredExercises.length}</span>
           </h2>
 
@@ -244,7 +244,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
                   variant="outline"
                   size="sm"
                   className="cursor-pointer rounded-lg"
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => setSearchQuery('')}
                 >
                   Clear search
                 </Button>
@@ -264,8 +264,8 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
                           placeholder="Exercise name"
                           autoFocus
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") void saveEdit(ex.id);
-                            if (e.key === "Escape") setEditingId(null);
+                            if (e.key === 'Enter') {void saveEdit(ex.id);}
+                            if (e.key === 'Escape') {setEditingId(null);}
                           }}
                         />
                         <div className="flex gap-2 shrink-0">
@@ -281,7 +281,7 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
                                 Saving…
                               </>
                             ) : (
-                              "Save"
+                              'Save'
                             )}
                           </Button>
                           <Button
@@ -301,8 +301,8 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
                         className="rounded-lg"
                         placeholder="Notes (optional)"
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") void saveEdit(ex.id);
-                          if (e.key === "Escape") setEditingId(null);
+                          if (e.key === 'Enter') {void saveEdit(ex.id);}
+                          if (e.key === 'Escape') {setEditingId(null);}
                         }}
                       />
                     </div>

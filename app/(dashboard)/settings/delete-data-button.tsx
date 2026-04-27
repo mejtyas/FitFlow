@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { deleteAllUserData } from "@/app/actions/workout-session";
-import { Button } from "@/components/ui/button";
-import { Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { deleteAllUserData } from '@/app/actions/workout-session';
+import { Button } from '@/components/ui/button';
+import { Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 
 export function DeleteDataButton() {
   const [loading, setLoading] = useState(false);
@@ -17,10 +17,10 @@ export function DeleteDataButton() {
       await deleteAllUserData();
       setConfirmOpen(false);
       router.refresh();
-      alert("All data deleted successfully.");
+      alert('All data deleted successfully.');
     } catch (error) {
-      console.error("Failed to delete data:", error);
-      alert("An error occurred while deleting data.");
+      console.error('Failed to delete data:', error);
+      alert('An error occurred while deleting data.');
     } finally {
       setLoading(false);
     }

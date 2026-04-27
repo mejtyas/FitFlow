@@ -1,16 +1,23 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type CreateWorkoutSessionResult =
+type CreateWorkoutSessionResult =
   | { sessionId: string }
-  | { error: "active_session_exists"; existingSessionId: string }
+  | { error: 'active_session_exists'; existingSessionId: string }
   | { error: string };
 
 function sameWorkoutId(
   a: string | null | undefined,
   b: string | null
 ): boolean {
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
+  if (
+    (a === null || a === undefined) &&
+    (b === null || b === undefined)
+  ) {
+    return true;
+  }
+  if (a === null || a === undefined || b === null || b === undefined) {
+    return false;
+  }
   return a === b;
 }
 
@@ -20,11 +27,11 @@ export async function createWorkoutSession(
   workoutId: string | null
 ): Promise<CreateWorkoutSessionResult> {
   const { data: existing } = await supabase
-    .from("workout_sessions")
-    .select("id, workout_id")
-    .eq("user_id", userId)
-    .is("ended_at", null)
-    .order("started_at", { ascending: false })
+    .from('workout_sessions')
+    .select('id, workout_id')
+    .eq('user_id', userId)
+    .is('ended_at', null)
+    .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -33,30 +40,30 @@ export async function createWorkoutSession(
       return { sessionId: existing.id };
     }
     return {
-      error: "active_session_exists",
+      error: 'active_session_exists',
       existingSessionId: existing.id,
     };
   }
 
   const { data: session, error: sessionError } = await supabase
-    .from("workout_sessions")
+    .from('workout_sessions')
     .insert({
       user_id: userId,
       workout_id: workoutId || null,
       started_at: new Date().toISOString(),
     })
-    .select("id")
+    .select('id')
     .single();
 
-  if (sessionError) return { error: sessionError.message };
-  if (!session) return { error: "Failed to create session" };
+  if (sessionError) {return { error: sessionError.message };}
+  if (!session) {return { error: 'Failed to create session' };}
 
   if (workoutId) {
     const { data: workoutExercises } = await supabase
-      .from("workout_exercises")
-      .select("exercise_id, order_index, default_sets")
-      .eq("workout_id", workoutId)
-      .order("order_index");
+      .from('workout_exercises')
+      .select('exercise_id, order_index, default_sets')
+      .eq('workout_id', workoutId)
+      .order('order_index');
 
     if (workoutExercises?.length) {
       const seRows = workoutExercises.map((we, i) => ({
@@ -66,11 +73,11 @@ export async function createWorkoutSession(
       }));
 
       const { data: insertedSEs, error: seError } = await supabase
-        .from("session_exercises")
+        .from('session_exercises')
         .insert(seRows)
-        .select("id, order_index");
+        .select('id, order_index');
 
-      if (seError) return { error: seError.message };
+      if (seError) {return { error: seError.message };}
 
       const sortedSEs = (insertedSEs ?? []).sort(
         (a, b) => a.order_index - b.order_index
@@ -88,9 +95,9 @@ export async function createWorkoutSession(
 
       if (allSetRows.length > 0) {
         const { error: setsError } = await supabase
-          .from("session_sets")
+          .from('session_sets')
           .insert(allSetRows);
-        if (setsError) return { error: setsError.message };
+        if (setsError) {return { error: setsError.message };}
       }
     }
   }

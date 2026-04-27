@@ -1,8 +1,13 @@
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { WorkoutSelector } from "@/components/workout-selector";
+import Link from 'next/link';
+import { workoutNameFromRelation } from '@/lib/workouts/workout-name-from-relation';
+import {
+  queryCompletedSessionDurations,
+  queryCompletedSessionsCount,
+} from '@/lib/supabase/queries/completed-workout-sessions';
+import { createClient } from '@/lib/supabase/server';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { WorkoutSelector } from '@/components/workout-selector';
 import {
   Activity,
   ArrowRight,
@@ -14,9 +19,9 @@ import {
   History as HistoryIcon,
   ListOrdered,
   Play,
-} from "lucide-react";
+} from 'lucide-react';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 type SessionWithWorkoutName = {
   id: string;
@@ -25,25 +30,12 @@ type SessionWithWorkoutName = {
   workouts: unknown;
 };
 
-function workoutNameFromRelation(workouts: unknown): string {
-  if (!workouts) return "Session";
-  if (Array.isArray(workouts)) {
-    const n = (workouts[0] as { name?: string } | undefined)?.name;
-    return n?.trim() || "Session";
-  }
-  if (typeof workouts === "object" && workouts !== null && "name" in workouts) {
-    const n = (workouts as { name?: string }).name;
-    return n?.trim() || "Session";
-  }
-  return "Session";
-}
-
 export default async function DashboardPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {return null;}
 
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -59,41 +51,36 @@ export default async function DashboardPage() {
     { data: workouts },
   ] = await Promise.all([
     supabase
-      .from("workout_sessions")
-      .select("id, started_at, workout_id, workouts(name)")
-      .eq("user_id", user.id)
-      .is("ended_at", null)
-      .order("started_at", { ascending: false })
+      .from('workout_sessions')
+      .select('id, started_at, workout_id, workouts(name)')
+      .eq('user_id', user.id)
+      .is('ended_at', null)
+      .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabase
-      .from("workout_sessions")
-      .select("id, started_at, ended_at, workouts(name)")
-      .eq("user_id", user.id)
-      .not("ended_at", "is", null)
-      .order("ended_at", { ascending: false })
+      .from('workout_sessions')
+      .select('id, started_at, ended_at, workouts(name)')
+      .eq('user_id', user.id)
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    queryCompletedSessionsCount(supabase, user.id),
+    queryCompletedSessionDurations(
+      supabase,
+      user.id,
+      thirtyDaysAgo.toISOString()
+    ),
     supabase
-      .from("workout_sessions")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .not("ended_at", "is", null),
+      .from('session_exercises')
+      .select('exercise_id, workout_sessions!inner(user_id)')
+      .eq('workout_sessions.user_id', user.id),
     supabase
-      .from("workout_sessions")
-      .select("started_at, ended_at")
-      .eq("user_id", user.id)
-      .not("ended_at", "is", null)
-      .gte("ended_at", thirtyDaysAgo.toISOString()),
-    supabase
-      .from("session_exercises")
-      .select("exercise_id, workout_sessions!inner(user_id)")
-      .eq("workout_sessions.user_id", user.id),
-    supabase
-      .from("workouts")
-      .select("id, name")
-      .eq("user_id", user.id)
-      .order("name"),
+      .from('workouts')
+      .select('id, name')
+      .eq('user_id', user.id)
+      .order('name'),
   ]);
 
   const hasActiveSession = !!activeSession;
@@ -119,14 +106,14 @@ export default async function DashboardPage() {
 
   const hour = new Date().getHours();
   const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  const displayName = user.email?.split("@")[0] ?? "there";
+  const displayName = user.email?.split('@')[0] ?? 'there';
 
   const quickLinks = [
-    { href: "/history", label: "History", icon: HistoryIcon },
-    { href: "/workouts", label: "Workouts", icon: ListOrdered },
-    { href: "/stats", label: "Stats", icon: BarChart3 },
+    { href: '/history', label: 'History', icon: HistoryIcon },
+    { href: '/workouts', label: 'Workouts', icon: ListOrdered },
+    { href: '/stats', label: 'Stats', icon: BarChart3 },
   ] as const;
 
   return (
@@ -134,7 +121,7 @@ export default async function DashboardPage() {
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1.5">
           <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-            {greeting},{" "}
+            {greeting},{' '}
             <span className="text-foreground">{displayName}</span>
           </h1>
           <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
@@ -144,7 +131,7 @@ export default async function DashboardPage() {
         {!hasActiveSession && (
           <p className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <Flame className="size-3.5 shrink-0 text-orange-500" strokeWidth={2} aria-hidden />
-            Total completed workouts:{" "}
+            Total completed workouts:{' '}
             <span className="tabular-nums text-foreground">{totalSessions ?? 0}</span>
           </p>
         )}
@@ -228,7 +215,7 @@ export default async function DashboardPage() {
                   <WorkoutSelector workouts={workouts} />
                   {(!workouts || workouts.length === 0) && (
                     <p className="text-center text-xs text-muted-foreground">
-                      No routines yet.{" "}
+                      No routines yet.{' '}
                       <Link
                         href="/workouts"
                         className="font-medium text-primary underline-offset-4 hover:underline cursor-pointer"
@@ -280,9 +267,9 @@ export default async function DashboardPage() {
                       <p className="truncate font-medium">{lastWorkoutName}</p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(lastSession.ended_at!).toLocaleDateString(undefined, {
-                          weekday: "long",
-                          month: "short",
-                          day: "numeric",
+                          weekday: 'long',
+                          month: 'short',
+                          day: 'numeric',
                         })}
                       </p>
                     </div>

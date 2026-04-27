@@ -1,9 +1,9 @@
-import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
-import type { Database } from "./database.types";
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+import type { Database } from './database.types';
 
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: { headers: request.headers },
   });
 
@@ -25,18 +25,18 @@ export async function updateSession(request: NextRequest) {
   );
 
   const protectedPaths = [
-    "/dashboard",
-    "/history",
-    "/workouts",
-    "/exercises",
-    "/stats",
-    "/settings",
+    '/dashboard',
+    '/history',
+    '/workouts',
+    '/exercises',
+    '/stats',
+    '/settings',
   ];
-  const authPaths = ["/login", "/register"];
+  const authPaths = ['/login', '/register'];
   const pathname = request.nextUrl.pathname;
   const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
   const isAuthRoute = authPaths.some((p) => pathname.startsWith(p));
-  const needsAuth = pathname === "/" || isProtected || isAuthRoute;
+  const needsAuth = pathname === '/' || isProtected || isAuthRoute;
 
   if (!needsAuth) {
     return response;
@@ -46,26 +46,26 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (pathname === "/" && !user) {
+  if (pathname === '/' && !user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = '/login';
     return NextResponse.redirect(url);
   }
-  if (pathname === "/" && user) {
+  if (pathname === '/' && user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = '/dashboard';
     return NextResponse.redirect(url);
   }
 
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
   if (isAuthRoute && user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = '/dashboard';
     return NextResponse.redirect(url);
   }
 

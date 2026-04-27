@@ -1,26 +1,26 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from '@/lib/supabase/server';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { CheckCircle2, CircleDot, MessageSquareText } from "lucide-react";
-import { FeedbackForm } from "./feedback-form";
-import { FeedbackList } from "./feedback-list";
+} from '@/components/ui/card';
+import { CheckCircle2, CircleDot, MessageSquareText } from 'lucide-react';
+import { FeedbackForm } from './feedback-form';
+import { FeedbackList } from './feedback-list';
 
 export default async function FeedbackPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {return null;}
 
   const { data: rows, error } = await supabase
-    .from("app_feedback")
-    .select("id, author_email, body, solved, created_at")
-    .order("created_at", { ascending: false });
+    .from('app_feedback')
+    .select('id, author_email, body, solved, created_at')
+    .order('created_at', { ascending: false });
 
   const items =
     error || !rows
@@ -85,10 +85,10 @@ export default async function FeedbackPage() {
           role="alert"
           className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
         >
-          Could not load feedback. If this table is new, run the{" "}
+          Could not load feedback. If this table is new, run the{' '}
           <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
             create_app_feedback
-          </code>{" "}
+          </code>{' '}
           migration in Supabase, then refresh.
         </div>
       )}

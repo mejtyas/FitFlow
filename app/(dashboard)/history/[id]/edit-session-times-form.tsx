@@ -1,21 +1,21 @@
-"use client";
+'use client';
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useRouter } from 'next/navigation';
+import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card';
 
 function isoToDatetimeLocal(iso: string): string {
   const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
+  const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
@@ -44,24 +44,24 @@ export function EditSessionTimesForm({
     const startedAt = new Date(startedLocal).toISOString();
     const endedAt = new Date(endedLocal).toISOString();
     if (new Date(endedAt).getTime() <= new Date(startedAt).getTime()) {
-      setError("End time must be after start time.");
+      setError('End time must be after start time.');
       return;
     }
     startTransition(async () => {
       const res = await fetch(`/api/sessions/${sessionId}/times`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ startedAt, endedAt }),
       });
-      let data: { error?: string } = {};
-      try {
-        data = (await res.json()) as { error?: string };
-      } catch {
-        setError("Could not save times.");
+      const data = (await res.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      if (!data) {
+        setError('Could not save times.');
         return;
       }
       if (!res.ok || data.error) {
-        setError(data.error ?? "Could not save times.");
+        setError(data.error ?? 'Could not save times.');
         return;
       }
       router.refresh();
@@ -107,7 +107,7 @@ export function EditSessionTimesForm({
             </p>
           ) : null}
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : "Save times"}
+            {pending ? 'Saving…' : 'Save times'}
           </Button>
         </form>
       </CardContent>

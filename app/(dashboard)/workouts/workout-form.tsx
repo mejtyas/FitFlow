@@ -1,18 +1,18 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createWorkout, updateWorkout } from "@/app/actions/workouts";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createWorkout, updateWorkout } from '@/app/actions/workouts';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { ChevronUp, ChevronDown, Trash2, Plus } from "lucide-react";
+} from '@/components/ui/card';
+import { ChevronUp, ChevronDown, Trash2, Plus } from 'lucide-react';
 
 type Exercise = { id: string; name: string };
 type ExerciseEntry = { exercise_id: string; default_sets: number };
@@ -20,7 +20,7 @@ type ExerciseEntry = { exercise_id: string; default_sets: number };
 export function WorkoutForm({
   exercises,
   workoutId,
-  initialName = "",
+  initialName = '',
   initialExercises = [],
 }: {
   exercises: Exercise[];
@@ -35,7 +35,7 @@ export function WorkoutForm({
   const [loading, setLoading] = useState(false);
 
   const addExercise = (exerciseId: string) => {
-    if (entries.some((e) => e.exercise_id === exerciseId)) return;
+    if (entries.some((e) => e.exercise_id === exerciseId)) {return;}
     setEntries((prev) => [...prev, { exercise_id: exerciseId, default_sets: 2 }]);
   };
 
@@ -44,7 +44,7 @@ export function WorkoutForm({
   };
 
   const moveUp = (index: number) => {
-    if (index <= 0) return;
+    if (index <= 0) {return;}
     setEntries((prev) => {
       const next = [...prev];
       [next[index - 1], next[index]] = [next[index], next[index - 1]];
@@ -53,7 +53,7 @@ export function WorkoutForm({
   };
 
   const moveDown = (index: number) => {
-    if (index >= entries.length - 1) return;
+    if (index >= entries.length - 1) {return;}
     setEntries((prev) => {
       const next = [...prev];
       [next[index], next[index + 1]] = [next[index + 1], next[index]];
@@ -73,8 +73,8 @@ export function WorkoutForm({
     setError(null);
     setLoading(true);
     const formData = new FormData();
-    formData.set("name", name);
-    formData.set("exercises", JSON.stringify(entries));
+    formData.set('name', name);
+    formData.set('exercises', JSON.stringify(entries));
 
     const result = workoutId
       ? await updateWorkout(workoutId, formData)
@@ -85,12 +85,12 @@ export function WorkoutForm({
       setError(result.error);
       return;
     }
-    router.push("/workouts");
+    router.push('/workouts');
     router.refresh();
   }
 
   const getExerciseName = (id: string) =>
-    exercises.find((e) => e.id === id)?.name ?? "?";
+    exercises.find((e) => e.id === id)?.name ?? '?';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -215,7 +215,7 @@ export function WorkoutForm({
 
       <div className="flex gap-2">
         <Button type="submit" disabled={loading}>
-          {workoutId ? "Save workout" : "Create workout"}
+          {workoutId ? 'Save workout' : 'Create workout'}
         </Button>
         <Button
           type="button"

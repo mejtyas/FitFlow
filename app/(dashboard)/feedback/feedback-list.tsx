@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { setFeedbackSolved } from "@/app/actions/feedback";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { setFeedbackSolved } from '@/app/actions/feedback';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,11 +12,11 @@ import {
   Loader2,
   MessageSquareText,
   UserRound,
-} from "lucide-react";
+} from 'lucide-react';
 
-export type FeedbackFilter = "open" | "solved" | "all";
+type FeedbackFilter = 'open' | 'solved' | 'all';
 
-export type FeedbackItem = {
+type FeedbackItem = {
   id: string;
   author_email: string;
   body: string;
@@ -25,8 +25,8 @@ export type FeedbackItem = {
 };
 
 function formatAuthor(email: string) {
-  const at = email.indexOf("@");
-  if (at <= 0) return email;
+  const at = email.indexOf('@');
+  if (at <= 0) {return email;}
   return email.slice(0, at);
 }
 
@@ -34,11 +34,11 @@ function formatWhen(iso: string) {
   try {
     const d = new Date(iso);
     return d.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
-      hour: "2-digit",
-      minute: "2-digit",
+      month: 'short',
+      day: 'numeric',
+      year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+      hour: '2-digit',
+      minute: '2-digit',
     });
   } catch {
     return iso;
@@ -48,7 +48,7 @@ function formatWhen(iso: string) {
 export function FeedbackList({ items }: { items: FeedbackItem[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FeedbackFilter>("open");
+  const [filter, setFilter] = useState<FeedbackFilter>('open');
   const [listError, setListError] = useState<string | null>(null);
 
   const openCount = useMemo(
@@ -61,8 +61,8 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
   );
 
   const filtered = useMemo(() => {
-    if (filter === "all") return items;
-    if (filter === "open") return items.filter((i) => !i.solved);
+    if (filter === 'all') {return items;}
+    if (filter === 'open') {return items.filter((i) => !i.solved);}
     return items.filter((i) => i.solved);
   }, [items, filter]);
 
@@ -79,9 +79,9 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
   }
 
   const filterTabs: { key: FeedbackFilter; label: string; count: number }[] = [
-    { key: "open", label: "Open", count: openCount },
-    { key: "solved", label: "Solved", count: solvedCount },
-    { key: "all", label: "All", count: items.length },
+    { key: 'open', label: 'Open', count: openCount },
+    { key: 'solved', label: 'Solved', count: solvedCount },
+    { key: 'all', label: 'All', count: items.length },
   ];
 
   if (items.length === 0) {
@@ -122,17 +122,17 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
                 setFilter(key);
               }}
               className={cn(
-                "inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-200 sm:text-sm",
+                'inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-200 sm:text-sm',
                 filter === key
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               {label}
               <span
                 className={cn(
-                  "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums sm:text-xs",
-                  filter === key ? "bg-primary/10 text-primary" : "bg-background/60 text-foreground"
+                  'rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums sm:text-xs',
+                  filter === key ? 'bg-primary/10 text-primary' : 'bg-background/60 text-foreground'
                 )}
               >
                 {count}
@@ -155,11 +155,11 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-12 text-center">
           <p className="text-sm text-muted-foreground">
-            {filter === "open"
-              ? "Nothing open — try Solved or All, or add a new note."
-              : filter === "solved"
-                ? "Nothing marked solved yet."
-                : "No notes match this filter."}
+            {filter === 'open'
+              ? 'Nothing open — try Solved or All, or add a new note.'
+              : filter === 'solved'
+                ? 'Nothing marked solved yet.'
+                : 'No notes match this filter.'}
           </p>
         </div>
       ) : (
@@ -170,16 +170,16 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
               <li key={item.id}>
                 <article
                   className={cn(
-                    "flex gap-3 p-4 transition-colors duration-200 sm:gap-4 sm:p-4",
+                    'flex gap-3 p-4 transition-colors duration-200 sm:gap-4 sm:p-4',
                     item.solved
-                      ? "bg-muted/20"
-                      : "bg-card hover:bg-muted/30"
+                      ? 'bg-muted/20'
+                      : 'bg-card hover:bg-muted/30'
                   )}
                 >
                   <div
                     className={cn(
-                      "flex size-9 shrink-0 items-center justify-center rounded-full",
-                      item.solved ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
+                      'flex size-9 shrink-0 items-center justify-center rounded-full',
+                      item.solved ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'
                     )}
                     aria-hidden
                   >
@@ -222,7 +222,7 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
                     <div className="flex flex-wrap gap-2 pt-1">
                       <Button
                         type="button"
-                        variant={item.solved ? "outline" : "default"}
+                        variant={item.solved ? 'outline' : 'default'}
                         size="sm"
                         disabled={busy}
                         onClick={() => toggleSolved(item.id, !item.solved)}
@@ -234,9 +234,9 @@ export function FeedbackList({ items }: { items: FeedbackItem[] }) {
                             Updating…
                           </>
                         ) : item.solved ? (
-                          "Mark open"
+                          'Mark open'
                         ) : (
-                          "Mark solved"
+                          'Mark solved'
                         )}
                       </Button>
                     </div>
