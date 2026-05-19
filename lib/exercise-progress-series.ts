@@ -1,4 +1,5 @@
 import { estimatedOneRmEpley } from '@/lib/estimated-one-rm';
+import { isLoggedSetReps } from '@/lib/validation';
 
 export type SessionSetRow = {
   id: string;
@@ -63,7 +64,9 @@ export function buildExerciseProgressSeries(
 
   const rows = history.map((h) => {
     const session = h.workout_sessions;
-    const sets = [...(h.session_sets ?? [])].sort((a, b) => a.set_index - b.set_index);
+    const sets = [...(h.session_sets ?? [])]
+      .filter((s) => isLoggedSetReps(s.reps))
+      .sort((a, b) => a.set_index - b.set_index);
     const kgList = sets.map((s) => parseNum(s.kg));
     const maxKg = kgList.length ? Math.max(...kgList) : 0;
     const volume = sets.reduce(

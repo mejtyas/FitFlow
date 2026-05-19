@@ -22,14 +22,22 @@ export function clampKg(
   return n;
 }
 
+/** A set counts as logged only when reps are at least 1. */
+export function isLoggedSetReps(
+  reps: number | null | undefined
+): reps is number {
+  return typeof reps === 'number' && Number.isFinite(reps) && reps >= 1;
+}
+
 export function clampReps(
   value: number | null | undefined
 ): number | null | undefined {
   if (value === undefined) {return undefined;}
   if (value === null) {return null;}
   if (!Number.isFinite(value)) {return null;}
-  const n = Math.floor(value);
-  if (n < 0 || n > MAX_REPS) {return Math.min(MAX_REPS, Math.max(0, n));}
+  const n = Math.round(value * 2) / 2;
+  if (n < 1) {return null;}
+  if (n > MAX_REPS) {return MAX_REPS;}
   return n;
 }
 

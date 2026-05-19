@@ -27,6 +27,7 @@ import { parseWarmupSettings } from '@/lib/warmup-settings';
 import { buildExerciseProgressSeries } from '@/lib/exercise-progress-series';
 import type { ExerciseHistoryRow, SessionSetRow } from '@/lib/exercise-progress-series';
 import { estimatedOneRmEpley } from '@/lib/estimated-one-rm';
+import { isLoggedSetReps } from '@/lib/validation';
 import { ExerciseProgressChart } from '@/components/exercise-progress-chart';
 
 export default async function ExerciseDetailPage({
@@ -82,11 +83,16 @@ export default async function ExerciseDetailPage({
     .order('workout_sessions(started_at)', { ascending: false });
 
   // 3. Calculate some stats
-  const allSets = history?.flatMap(h => h.session_sets) || [];
-  const maxWeight = Math.max(...allSets.map(s => Number(s.kg || 0)), 0);
-  const totalVolume = allSets.reduce((sum, s) => sum + (Number(s.kg || 0) * Number(s.reps || 0)), 0);
+  const allSets =
+    history?.flatMap((h) => h.session_sets).filter((s) => isLoggedSetReps(s.reps)) ||
+    [];
+  const maxWeight = Math.max(...allSets.map((s) => Number(s.kg || 0)), 0);
+  const totalVolume = allSets.reduce(
+    (sum, s) => sum + Number(s.kg || 0) * Number(s.reps),
+    0
+  );
   const bestEstOneRm = allSets.reduce((best, s) => {
-    const e = estimatedOneRmEpley(Number(s.kg || 0), Number(s.reps || 0));
+    const e = estimatedOneRmEpley(Number(s.kg || 0), Number(s.reps));
     if (e !== null && e !== undefined && e > best) {
       return e;
     }
@@ -259,6 +265,7 @@ export default async function ExerciseDetailPage({
                     <CardContent className="p-4">
                       <div className="flex flex-wrap gap-x-8 gap-y-3">
                         {[...(h.session_sets ?? [])]
+                          .filter((set: SessionSetRow) => isLoggedSetReps(set.reps))
                           .sort((a: SessionSetRow, b: SessionSetRow) => a.set_index - b.set_index)
                           .map((set: SessionSetRow, idx: number) => (
                           <div key={set.id} className="flex items-center gap-3">
@@ -270,7 +277,7 @@ export default async function ExerciseDetailPage({
                                 {set.kg || 0}<span className="text-[10px] text-muted-foreground ml-0.5">kg</span>
                               </span>
                               <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-0.5">
-                                {set.reps || 0}<span className="ml-0.5">reps</span>
+                                {set.reps}<span className="ml-0.5">reps</span>
                               </span>
                             </div>
                           </div>

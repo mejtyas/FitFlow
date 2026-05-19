@@ -30,10 +30,10 @@ export function ActiveWorkoutAddExerciseSlot({
 
   if (open) {
     return (
-      <div className="p-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 space-y-3 animate-in fade-in zoom-in-95 duration-200">
+      <div className="animate-in fade-in zoom-in-95 space-y-3 rounded-xl border border-dashed border-primary/30 bg-primary/10 p-3 duration-200">
         <div className="flex items-center justify-between px-1">
-          <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/80">
-            Add Exercise
+          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Add exercise
           </span>
           <Button
             type="button"
@@ -52,7 +52,7 @@ export function ActiveWorkoutAddExerciseSlot({
               type="button"
               variant="secondary"
               size="sm"
-              className="rounded-xl font-bold h-8 px-3 text-xs hover:bg-primary hover:text-primary-foreground transition-all"
+              className="h-8 rounded-lg px-3 text-xs font-semibold transition-colors duration-200 hover:bg-primary hover:text-primary-foreground"
               onClick={() => onPickExercise(e.id)}
             >
               {e.name}
@@ -69,14 +69,13 @@ export function ActiveWorkoutAddExerciseSlot({
   }
 
   return (
-    <div className="flex justify-center">
-      <button
-        type="button"
-        className="size-7 rounded-full border border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-primary/10 hover:text-primary text-muted-foreground/40 flex items-center justify-center transition-all"
-        onClick={onOpen}
-      >
-        <Plus className="size-3.5" />
-      </button>
-    </div>
+    <button
+      type="button"
+      className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:border-primary/35 hover:text-primary"
+      onClick={onOpen}
+    >
+      <Plus className="size-4" aria-hidden />
+      Add exercise to this workout
+    </button>
   );
 }

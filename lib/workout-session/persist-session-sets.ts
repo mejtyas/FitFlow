@@ -129,29 +129,6 @@ async function updateSessionSetKgRepsScoped(
   return {};
 }
 
-/** Single set update with user + active session ownership checks (for server actions). */
-export async function updateSessionSetKgRepsForUser(
-  supabase: TypedSupabase,
-  userId: string,
-  workoutSessionId: string,
-  setId: string,
-  updates: SessionSetKgRepsUpdate
-): Promise<{ error?: string }> {
-  const gate = await assertActiveSessionOwnedByUser(
-    supabase,
-    userId,
-    workoutSessionId
-  );
-  if (gate.error) {return gate;}
-
-  return updateSessionSetKgRepsScoped(
-    supabase,
-    workoutSessionId,
-    setId,
-    updates
-  );
-}
-
 /** Batch persist for keepalive flush; verifies session once then updates each set under that session. */
 export async function flushSessionSetsForActiveWorkout(
   supabase: TypedSupabase,

@@ -37,7 +37,10 @@ export default async function ExercisesPage() {
         )}
       </header>
 
-      <ExerciseList exercises={items} />
+      <ExerciseList
+        key={items.map((i) => i.id).join()}
+        exercises={items}
+      />
     </div>
   );
 }

@@ -7,6 +7,12 @@ import {
 import { deleteSet } from '@/app/actions/workout-session-sets-actions';
 import { updateExerciseDescription } from '@/app/actions/exercises';
 import { REST_DEFAULT_SECONDS } from '@/app/(dashboard)/dashboard/active/active-workout-constants';
+import { followerSetIdsToPrefillKg } from '@/app/(dashboard)/dashboard/active/active-workout-prefill';
+import {
+  parseSetFieldValue,
+  setHasLoggedRepsAndKg,
+  shouldAutoCompleteSetOnFieldChange,
+} from '@/app/(dashboard)/dashboard/active/active-workout-set-value';
 import {
   migrateMirrorSetId,
   removeMirrorSet,
@@ -38,6 +44,7 @@ export function useActiveWorkoutActionsSecondary(
     setAddExerciseOpen,
     editDescriptionValue,
     setEditingDescriptionId,
+    preserveScrollOnNextLayout,
   } = base;
 
   const handleSetChange = useCallback(
@@ -47,18 +54,16 @@ export function useActiveWorkoutActionsSecondary(
       field: 'kg' | 'reps',
       value: number | ''
     ) => {
-      const num =
-        value === ''
-          ? null
-          : (() => {
-              const n = typeof value === 'number' ? value : Number(value);
-              return Number.isFinite(n) ? n : null;
-            })();
+      const num = parseSetFieldValue(field, value);
       const autoComplete = {
         did: false,
         sec: null as number | null,
       };
       const followerIdsToPersist: string[] = [];
+      const targetSet = exercises.flatMap((ex) => ex.sets).find((s) => s.id === setId);
+      if (targetSet && shouldAutoCompleteSetOnFieldChange(targetSet, field, num)) {
+        preserveScrollOnNextLayout();
+      }
       setExercises((prev) => {
         followerIdsToPersist.length = 0;
         return prev.map((ex) => {
@@ -68,13 +73,11 @@ export function useActiveWorkoutActionsSecondary(
 
           const sorted = [...ex.sets].sort((a, b) => a.set_index - b.set_index);
           const isFirstSet = sorted[0]?.id === setId;
+          const prevFirstKg = isFirstSet ? (sorted[0]?.kg ?? null) : null;
           const prefillKg = field === 'kg' && num !== null ? num : null;
           const prefillFollowerIds =
             prefillKg !== null && isFirstSet && sorted.length > 1
-              ? sorted
-                  .slice(1, 3)
-                  .filter((s) => s.kg === null || s.kg === undefined)
-                  .map((s) => s.id)
+              ? followerSetIdsToPrefillKg(sorted, prevFirstKg)
               : [];
           const prefillSet = new Set(prefillFollowerIds);
           const nextFollowerIds = prefillFollowerIds.filter(
@@ -108,16 +111,8 @@ export function useActiveWorkoutActionsSecondary(
                 return s;
               }
               const withField = { ...s, [field]: num };
-              const bothFilled =
-                withField.kg !== null &&
-                withField.kg !== undefined &&
-                withField.reps !== null &&
-                withField.reps !== undefined;
-              const prevBothFilled =
-                s.kg !== null &&
-                s.kg !== undefined &&
-                s.reps !== null &&
-                s.reps !== undefined;
+              const bothFilled = setHasLoggedRepsAndKg(withField.kg, withField.reps);
+              const prevBothFilled = setHasLoggedRepsAndKg(s.kg, s.reps);
               const becameBothFilled = bothFilled && !prevBothFilled;
               const shouldAutoComplete = becameBothFilled && !s.completed;
               const result = shouldAutoComplete
@@ -164,12 +159,14 @@ export function useActiveWorkoutActionsSecondary(
       followerIdsToPersist.map((fid) => schedulePersistSet(fid));
     },
     [
+      exercises,
       restDurations,
       schedulePersistSet,
       sessionId,
       startRestCountdown,
       setExercises,
       latestSetSnapshotRef,
+      preserveScrollOnNextLayout,
     ]
   );
 

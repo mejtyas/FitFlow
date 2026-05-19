@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireApiUser } from '@/lib/api/require-api-user';
+import { isLoggedSetReps } from '@/lib/validation';
 import ExcelJS from 'exceljs';
 import Papa from 'papaparse';
 
@@ -155,7 +156,13 @@ export async function GET(request: Request) {
     return sessionExercises.flatMap((se) => {
       const ex = se.exercises as { name: string } | { name: string }[] | null;
       const name = (Array.isArray(ex) ? ex[0]?.name : ex?.name) ?? '?';
-      const sets = (se.session_sets as { set_index: number; kg: number | null; reps: number | null }[]) ?? [];
+      const sets = (
+        (se.session_sets as {
+          set_index: number;
+          kg: number | null;
+          reps: number | null;
+        }[]) ?? []
+      ).filter((set) => isLoggedSetReps(set.reps));
       return sets.map((set) => ({
         date: dateStr,
         workout_name: workoutName,

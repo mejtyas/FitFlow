@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { EditSessionTimesForm } from './edit-session-times-form';
+import { isLoggedSetReps } from '@/lib/validation';
 
 function formatShortDurationMs(ms: number): string {
   const sec = Math.max(0, Math.round(ms / 1000));
@@ -121,9 +122,15 @@ export default defineRouteIdPage(async ({ id, supabase, user }) => {
 
       <div className="space-y-4">
         {(sessionExercises ?? []).map((se) => {
-          const sets = ((se.session_sets as { set_index: number; kg: number | null; reps: number | null }[]) ?? []).sort(
-            (a, b) => a.set_index - b.set_index
-          );
+          const sets = (
+            (se.session_sets as {
+              set_index: number;
+              kg: number | null;
+              reps: number | null;
+            }[]) ?? []
+          )
+            .filter((s) => isLoggedSetReps(s.reps))
+            .sort((a, b) => a.set_index - b.set_index);
           const ex = se.exercises as { name: string } | { name: string }[] | null;
           const name = (Array.isArray(ex) ? ex[0]?.name : ex?.name) ?? '?';
           const logOrder = se.logged_order as number | null | undefined;

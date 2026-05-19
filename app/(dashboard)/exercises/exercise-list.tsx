@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { createExercise, deleteExercise } from '@/app/actions/exercises';
 import { Button } from '@/components/ui/button';
@@ -33,10 +33,6 @@ export function ExerciseList({ exercises: initial }: { exercises: Exercise[] }) 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
-
-  useEffect(() => {
-    setExercises(initial);
-  }, [initial]);
 
   const filteredExercises = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

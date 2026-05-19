@@ -8,7 +8,7 @@ import {
 import { formatSecondsAsClock } from '@/app/(dashboard)/dashboard/active/active-workout-format';
 import type { SessionExercise } from '@/app/(dashboard)/dashboard/active/active-workout-types';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ActiveWorkoutSetNumericInput } from '@/app/(dashboard)/dashboard/active/active-workout-set-numeric-input';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -65,6 +65,9 @@ export function ActiveWorkoutExerciseCard({
   onDeleteSet,
   onAddSet,
 }: ActiveWorkoutExerciseCardProps) {
+  const displaySets = [...ex.sets].sort((a, b) => a.set_index - b.set_index);
+  const firstPendingSetId = displaySets.find((set) => !set.completed)?.id ?? null;
+
   const commitCustomRestSeconds = () => {
     const v = parseInt(customRestDraft, 10);
     if (!Number.isFinite(v)) {
@@ -76,48 +79,30 @@ export function ActiveWorkoutExerciseCard({
   };
 
   return (
-    <Card
+    <section
       className={cn(
-        'overflow-hidden shadow-sm transition-colors duration-300',
+        'overflow-hidden rounded-xl border bg-card p-4 shadow-lg shadow-black/10 transition-colors duration-300 md:p-5',
         exerciseDone
-          ? 'border-green-600/45 dark:border-green-500/40 shadow-green-500/10'
+          ? 'border-primary/35'
           : 'border-muted/60'
       )}
     >
-      <CardHeader
-        className={cn(
-          'py-3 px-4 border-b transition-colors duration-300',
-          exerciseDone
-            ? 'bg-green-500/15 dark:bg-green-500/12 border-green-500/25'
-            : 'bg-muted/30'
-        )}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle
-            className={cn(
-              'text-sm font-bold tracking-tight min-w-0 pt-0.5 transition-colors',
-              exerciseDone && 'text-green-800 dark:text-green-400'
-            )}
-          >
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="truncate text-xl font-semibold tracking-tight">
             {ex.exercise_name}
-          </CardTitle>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 rounded-full text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10"
-              aria-label={`Remove ${ex.exercise_name} from session`}
-              onClick={() => void onRemoveExercise(ex.id)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+          </h2>
+          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+            {ex.exercise_description || `${ex.sets.length} sets · target 8-12 reps`}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
             <div className="relative" id={`rest-picker-${ex.exercise_id}`}>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="h-7 gap-1 rounded-lg px-2 text-[10px] font-black uppercase tracking-tight"
+              className="h-8 gap-1 rounded-lg border border-border bg-secondary px-3 font-mono text-[11px] text-muted-foreground hover:text-foreground"
                 onClick={(e) => {
                   e.stopPropagation();
                   setRestPickerOpen((o) => {
@@ -132,7 +117,7 @@ export function ActiveWorkoutExerciseCard({
                   });
                 }}
               >
-                <Clock className="size-3 shrink-0 opacity-70" aria-hidden />
+              <Clock className="size-3.5 shrink-0 opacity-70" aria-hidden />
                 Rest{' '}
                 {formatSecondsAsClock(
                   restDurations[ex.exercise_id] ?? REST_DEFAULT_SECONDS
@@ -144,7 +129,7 @@ export function ActiveWorkoutExerciseCard({
                   role="dialog"
                   aria-label="Rest duration for this exercise"
                 >
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+                <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Rest between sets
                   </p>
                   <div className="flex flex-wrap gap-1.5">
@@ -158,7 +143,7 @@ export function ActiveWorkoutExerciseCard({
                           type="button"
                           size="sm"
                           variant={active ? 'default' : 'outline'}
-                          className="h-8 rounded-lg px-2 text-xs font-bold tabular-nums"
+                        className="h-8 rounded-lg px-2 text-xs font-semibold tabular-nums"
                           onClick={(e) => {
                             e.stopPropagation();
                             setRestDurations((prev) => ({
@@ -195,13 +180,13 @@ export function ActiveWorkoutExerciseCard({
                             commitCustomRestSeconds();
                           }
                         }}
-                        className="h-9 rounded-lg font-bold"
+                      className="h-9 rounded-lg font-mono font-medium"
                       />
                     </div>
                     <Button
                       type="button"
                       size="sm"
-                      className="h-9 shrink-0 font-bold"
+                    className="h-9 shrink-0 font-semibold"
                       onClick={(e) => {
                         e.stopPropagation();
                         commitCustomRestSeconds();
@@ -213,17 +198,33 @@ export function ActiveWorkoutExerciseCard({
                 </div>
               ) : null}
             </div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 whitespace-nowrap pt-1">
-              {ex.sets.length} {ex.sets.length === 1 ? 'Set' : 'Sets'}
-            </div>
-          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 cursor-pointer rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+            aria-label={`Remove ${ex.exercise_name} from session`}
+            onClick={() => void onRemoveExercise(ex.id)}
+          >
+            <Trash2 className="size-4" aria-hidden />
+          </Button>
         </div>
+      </div>
+
+      <ActiveWorkoutExercisePastAndWarmup
+        ex={ex}
+        onEditNote={() => {
+          setEditingDescriptionId(ex.exercise_id);
+          setEditDescriptionValue(ex.exercise_description ?? '');
+        }}
+      />
+
         {editingDescriptionId === ex.exercise_id ? (
           <Input
             value={editDescriptionValue}
             onChange={(e) => setEditDescriptionValue(e.target.value)}
             placeholder="Add notes (machine settings, form cues...)"
-            className="h-7 text-xs mt-1 rounded-lg bg-background/50"
+          className="mb-4 h-9 rounded-lg bg-secondary text-sm"
             autoFocus
             onBlur={() => onSaveDescription(ex.exercise_id)}
             onKeyDown={(e) => {
@@ -235,121 +236,132 @@ export function ActiveWorkoutExerciseCard({
               }
             }}
           />
-        ) : (
-          <button
-            type="button"
-            className="text-left w-full"
-            onClick={() => {
-              setEditingDescriptionId(ex.exercise_id);
-              setEditDescriptionValue(ex.exercise_description ?? '');
-            }}
-          >
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {ex.exercise_description || 'Add notes...'}
-            </p>
-          </button>
-        )}
-      </CardHeader>
-      <CardContent
-        className={cn(
-          'p-3 space-y-2 transition-colors duration-300',
-          exerciseDone && 'bg-green-500/[0.06] dark:bg-green-500/[0.08]'
-        )}
-      >
-        <ActiveWorkoutExercisePastAndWarmup ex={ex} />
+      ) : null}
+
         {ex.sets.length > 0 && (
-          <div className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 px-1 mb-1">
-            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">
-              KG
-            </span>
-            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">
-              Reps
-            </span>
-            <span className="sr-only">Done</span>
-            <span className="sr-only">Delete</span>
+        <div className="overflow-x-auto">
+          <div className="grid min-w-[42rem] grid-cols-[2.25rem_1fr_1fr_1fr_4.5rem_2.75rem_2.75rem] items-center gap-x-3">
+            {['Set', 'Previous', 'Weight (kg)', 'Reps', 'RPE', '✓', ''].map(
+              (heading) => (
+                <div
+                  key={heading || 'delete'}
+                  className="px-1 pb-2 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground"
+                >
+                  {heading}
+                </div>
+              )
+            )}
+
+            {displaySets.map((set) => {
+              const previousSet = ex.past_sessions[0]?.sets[set.set_index];
+              const previousLabel = previousSet
+                ? `${previousSet.kg ?? 0} × ${previousSet.reps ?? 0}`
+                : '—';
+              const isActive = set.id === firstPendingSetId;
+
+              return (
+                <div key={set.id} className="contents">
+                  <div
+                    className={cn(
+                      'relative border-t border-border px-1 py-2 text-center font-mono text-sm font-semibold',
+                      isActive && 'text-primary before:absolute before:bottom-2 before:left-0 before:top-2 before:w-0.5 before:rounded before:bg-primary',
+                      set.completed && 'text-muted-foreground'
+                    )}
+                  >
+                    {set.set_index + 1}
+                  </div>
+                  <div className="border-t border-border px-1 py-2">
+                    <button
+                      type="button"
+                      className="cursor-pointer rounded-md px-2 py-1 font-mono text-xs text-muted-foreground transition-colors duration-200 hover:bg-secondary hover:text-foreground"
+                    >
+                      {previousLabel}
+                    </button>
+                  </div>
+                  {(
+                    [
+                      { field: 'kg' as const, raw: set.kg },
+                      { field: 'reps' as const, raw: set.reps },
+                    ] as const
+                  ).map((cfg) => (
+                    <div key={cfg.field} className="border-t border-border px-1 py-2">
+                      <ActiveWorkoutSetNumericInput
+                        id={`${cfg.field}-${set.id}`}
+                        field={cfg.field}
+                        value={cfg.raw}
+                        onChange={(v) =>
+                          onSetChange(set.id, ex.exercise_id, cfg.field, v)
+                        }
+                        onBlur={() => onPersistSetNow(set.id)}
+                        className={cn(
+                          'h-9 rounded-lg border-border bg-secondary font-mono font-medium transition-colors focus:bg-background',
+                          set.completed && 'border-transparent bg-transparent text-muted-foreground line-through'
+                        )}
+                      />
+                    </div>
+                  ))}
+                  <div className="border-t border-border px-1 py-2">
+                    <button
+                      type="button"
+                      className={cn(
+                        'mx-auto flex h-8 min-w-8 cursor-pointer items-center justify-center rounded-lg border border-border bg-secondary px-2 font-mono text-xs text-muted-foreground',
+                        set.completed && 'border-primary/35 bg-primary/10 text-primary'
+                      )}
+                    >
+                      {set.completed ? '8' : '—'}
+                    </button>
+                  </div>
+                  <div className="border-t border-border px-1 py-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        'mx-auto size-9 cursor-pointer rounded-lg border border-border bg-secondary text-muted-foreground transition-colors duration-200 hover:border-primary/35 hover:text-primary',
+                        set.completed && 'border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
+                      )}
+                      onClick={() => onConfirmSet(set.id)}
+                    >
+                      <Check className="size-3.5" aria-hidden />
+                    </Button>
+                  </div>
+                  <div className="border-t border-border px-1 py-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="mx-auto size-8 cursor-pointer rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => onDeleteSet(set.id)}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
-        {ex.sets.map((set, index) => (
-          <div
-            key={set.id}
-            className="grid grid-cols-[1fr_1fr_40px_40px] gap-3 items-center animate-in fade-in slide-in-from-left-2 duration-300"
-            style={{ animationDelay: `${index * 50}ms` }}
-          >
-            {(
-              [
-                {
-                  field: 'kg' as const,
-                  step: 0.5,
-                  raw: set.kg,
-                  parse: (v: string) => parseFloat(v),
-                },
-                {
-                  field: 'reps' as const,
-                  step: 1,
-                  raw: set.reps,
-                  parse: (v: string) => parseInt(v, 10),
-                },
-              ] as const
-            ).map((cfg) => (
-              <div key={cfg.field} className="relative">
-                <Input
-                  id={`${cfg.field}-${set.id}`}
-                  type="number"
-                  min={0}
-                  step={cfg.step}
-                  placeholder="0"
-                  value={cfg.raw ?? ''}
-                  onChange={(e) =>
-                    onSetChange(
-                      set.id,
-                      ex.exercise_id,
-                      cfg.field,
-                      e.target.value === '' ? '' : cfg.parse(e.target.value)
-                    )
-                  }
-                  onBlur={() => onPersistSetNow(set.id)}
-                  className="h-9 rounded-xl font-bold bg-background/50 focus:bg-background transition-colors"
-                />
-              </div>
-            ))}
-            <div className="flex justify-center">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={`size-8 rounded-full transition-colors ${
-                  set.completed
-                    ? 'bg-green-500/15 text-green-600 hover:bg-green-500/25'
-                    : 'text-muted-foreground/30 hover:text-green-600 hover:bg-green-500/10'
-                }`}
-                onClick={() => onConfirmSet(set.id)}
-              >
-                <Check className="size-3.5" />
-              </Button>
-            </div>
-            <div className="flex justify-center">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                onClick={() => onDeleteSet(set.id)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-          </div>
-        ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="w-full mt-1 h-8 rounded-xl border border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-primary/5 hover:text-primary transition-all text-[11px] font-bold uppercase tracking-wider"
+          className="h-9 flex-1 cursor-pointer rounded-lg border border-dashed border-border text-xs font-medium text-muted-foreground transition-colors duration-200 hover:border-primary/35 hover:text-primary"
           onClick={() => onAddSet(ex.id)}
         >
-          <Plus className="size-3 mr-1" /> Add Set
+          <Plus className="size-3.5" aria-hidden />
+          Add set
         </Button>
-      </CardContent>
-    </Card>
+        <button
+          type="button"
+          className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-200 hover:text-foreground"
+        >
+          <Clock className="size-3.5" aria-hidden />
+          Log warm-up
+        </button>
+      </div>
+    </section>
   );
 }

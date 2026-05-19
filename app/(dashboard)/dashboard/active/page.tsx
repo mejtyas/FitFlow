@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { hydrateRestTimerForSession } from '@/lib/workout-session/session-rest-timer';
 import { parseWarmupSettings } from '@/lib/warmup-settings';
+import { isLoggedSetReps } from '@/lib/validation';
 import type { Json } from '@/lib/supabase/database.types';
 import { ActiveWorkoutView } from './active-workout-view';
 
@@ -135,6 +136,7 @@ export default async function ActiveWorkoutPage({
         }[]) ?? []
       )
         .sort((a, b) => a.set_index - b.set_index)
+        .filter((s) => isLoggedSetReps(s.reps))
         .map((s) => ({ kg: s.kg, reps: s.reps }));
 
       acc.set(exId, [

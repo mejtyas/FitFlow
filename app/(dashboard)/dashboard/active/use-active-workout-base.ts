@@ -84,6 +84,20 @@ export function useActiveWorkoutBase({
   });
   const hadRunningRestRef = useRef(false);
   const skipRestMirrorWriteRef = useRef(true);
+  const scrollPreserveYRef = useRef<number | null>(null);
+
+  const preserveScrollOnNextLayout = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      scrollPreserveYRef.current = window.scrollY;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (scrollPreserveYRef.current !== null) {
+      window.scrollTo(0, scrollPreserveYRef.current);
+      scrollPreserveYRef.current = null;
+    }
+  }, [exercises]);
 
   useLayoutEffect(() => {
     restPersistRef.current = {
@@ -290,6 +304,7 @@ export function useActiveWorkoutBase({
     flushSetsKeepalive,
     persistSetNow,
     schedulePersistSet,
+    preserveScrollOnNextLayout,
   };
 }
 

@@ -12,6 +12,7 @@ import {
 import { requireAuthForSessionId } from '@/lib/supabase/require-auth-for-session';
 import { requireAuthUser } from '@/lib/supabase/require-auth-user';
 import { isValidUuid } from '@/lib/validation';
+import { purgeInvalidSessionSets } from '@/lib/workout-session/purge-invalid-session-sets';
 
 export async function startWorkout(workoutId: string | null) {
   const auth = await requireAuthUser();
@@ -57,6 +58,11 @@ export async function endWorkout(sessionId: string) {
   const { supabase, user } = gate;
 
   const endedAt = new Date().toISOString();
+
+  const purge = await purgeInvalidSessionSets(supabase, sessionId);
+  if (purge.error) {
+    return { error: purge.error };
+  }
 
   await closeOpenRestPeriodsForSessionEnd(supabase, sessionId, endedAt);
 

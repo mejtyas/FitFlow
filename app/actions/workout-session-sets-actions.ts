@@ -2,10 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { activeSessionGateOrError } from '@/lib/workout-session/active-session-gate';
-import {
-  updateSessionSetKgRepsForUser,
-  verifySetBelongsToSession,
-} from '@/lib/workout-session/persist-session-sets';
+import { verifySetBelongsToSession } from '@/lib/workout-session/persist-session-sets';
 import { requireSessionExerciseMutationContext } from '@/lib/workout-session/require-session-exercise-mutation-context';
 import { requireSessionMutationIds } from '@/lib/workout-session/require-session-mutation-ids';
 
@@ -47,32 +44,6 @@ export async function addSetToSessionExercise(
   }
   revalidatePath('/dashboard/active');
   return { set: newSet };
-}
-
-export async function updateSet(
-  workoutSessionId: string,
-  setId: string,
-  updates: { kg?: number | null; reps?: number | null; completed?: boolean }
-) {
-  const ctx = await requireSessionMutationIds(workoutSessionId, setId);
-  if (!('supabase' in ctx)) {
-    return ctx;
-  }
-  const { supabase, user } = ctx;
-
-  const result = await updateSessionSetKgRepsForUser(
-    supabase,
-    user.id,
-    workoutSessionId,
-    setId,
-    updates
-  );
-  if (result.error) {
-    return result;
-  }
-
-  revalidatePath('/dashboard/active');
-  return {};
 }
 
 export async function deleteSet(workoutSessionId: string, setId: string) {

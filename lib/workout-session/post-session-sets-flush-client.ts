@@ -1,6 +1,6 @@
 /** Persist session set rows via `/api/session-sets/flush` — avoids Server Action POST + proxy middleware edge cases (see unexpected RSC payloads). */
 
-export type SessionSetsFlushUpdate = {
+type SessionSetsFlushUpdate = {
   setId: string;
   kg: number | null;
   reps: number | null;

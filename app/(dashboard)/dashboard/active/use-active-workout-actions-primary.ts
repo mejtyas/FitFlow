@@ -29,6 +29,7 @@ export function useActiveWorkoutActionsPrimary(
     restDurations,
     schedulePersistSet,
     setEnding,
+    preserveScrollOnNextLayout,
   } = base;
 
   const startRestCountdown = useCallback(
@@ -51,6 +52,7 @@ export function useActiveWorkoutActionsPrimary(
   const handleConfirmSet = useCallback(
     (setId: string) => {
       if (setId.startsWith('temp-')) {
+        preserveScrollOnNextLayout();
         setExercises((prev) =>
           prev.map((ex) => ({
             ...ex,
@@ -66,6 +68,7 @@ export function useActiveWorkoutActionsPrimary(
         completed: undefined as boolean | undefined,
         exerciseId: undefined as string | undefined,
       };
+      preserveScrollOnNextLayout();
       setExercises((prev) =>
         prev.map((ex) => ({
           ...ex,
@@ -130,6 +133,7 @@ export function useActiveWorkoutActionsPrimary(
       startRestCountdown,
       setExercises,
       latestSetSnapshotRef,
+      preserveScrollOnNextLayout,
     ]
   );
 

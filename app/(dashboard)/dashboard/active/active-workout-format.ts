@@ -4,6 +4,7 @@ import {
   computeWarmupPair,
   topSetKgFromPastSessions,
 } from '@/lib/warmup-settings';
+import { isLoggedSetReps } from '@/lib/validation';
 
 export function formatSecondsAsClock(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -91,7 +92,11 @@ export function formatDuration(ms: number): string {
 export function formatPastSetsLine(
   sets: { kg: number | null; reps: number | null }[]
 ): string {
-  return sets.map((s) => `${s.kg ?? 0}×${s.reps ?? 0}`).join(', ');
+  const logged = sets.filter((s) => isLoggedSetReps(s.reps));
+  if (logged.length === 0) {
+    return '—';
+  }
+  return logged.map((s) => `${s.kg ?? 0}×${s.reps}`).join(', ');
 }
 
 /** Local calendar dates at noon to avoid DST non–24h gaps when diffing days. */
