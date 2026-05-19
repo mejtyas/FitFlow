@@ -26,7 +26,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
   const secondary = useActiveWorkoutActionsSecondary(
     props,
     base,
-    primary.startRestCountdown
+    primary.scheduleRestAfterSet
   );
 
   const {
@@ -159,6 +159,7 @@ export function ActiveWorkoutView(props: ActiveWorkoutViewProps) {
               onRemoveExercise={secondary.handleRemoveExercise}
               onSaveDescription={secondary.handleSaveDescription}
               onSetChange={secondary.handleSetChange}
+              onSetBlur={secondary.handleSetBlur}
               onPersistSetNow={persistSetNow}
               onConfirmSet={primary.handleConfirmSet}
               onDeleteSet={secondary.handleDeleteSet}

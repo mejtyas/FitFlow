@@ -1,10 +1,8 @@
 'use client';
 
 import { ActiveWorkoutExercisePastAndWarmup } from '@/app/(dashboard)/dashboard/active/active-workout-exercise-past-warmup';
-import {
-  REST_DEFAULT_SECONDS,
-  REST_PRESET_SECONDS,
-} from '@/app/(dashboard)/dashboard/active/active-workout-constants';
+import { REST_PRESET_SECONDS } from '@/app/(dashboard)/dashboard/active/active-workout-constants';
+import { getDefaultRestSeconds } from '@/lib/rest-preferences';
 import { formatSecondsAsClock } from '@/app/(dashboard)/dashboard/active/active-workout-format';
 import type { SessionExercise } from '@/app/(dashboard)/dashboard/active/active-workout-types';
 import { Button } from '@/components/ui/button';
@@ -39,6 +37,7 @@ type ActiveWorkoutExerciseCardProps = {
     value: number | ''
   ) => void;
   onPersistSetNow: (setId: string) => void;
+  onSetBlur: (setId: string, exerciseId: string, field: 'kg' | 'reps') => void;
   onConfirmSet: (setId: string) => void;
   onDeleteSet: (setId: string) => void;
   onAddSet: (sessionExerciseId: string) => void;
@@ -61,6 +60,7 @@ export function ActiveWorkoutExerciseCard({
   onSaveDescription,
   onSetChange,
   onPersistSetNow,
+  onSetBlur,
   onConfirmSet,
   onDeleteSet,
   onAddSet,
@@ -109,7 +109,7 @@ export function ActiveWorkoutExerciseCard({
                     const opening = o !== ex.exercise_id;
                     if (opening) {
                       setCustomRestDraft(
-                        String(restDurations[ex.exercise_id] ?? REST_DEFAULT_SECONDS)
+                        String(restDurations[ex.exercise_id] ?? getDefaultRestSeconds())
                       );
                       return ex.exercise_id;
                     }
@@ -120,7 +120,7 @@ export function ActiveWorkoutExerciseCard({
               <Clock className="size-3.5 shrink-0 opacity-70" aria-hidden />
                 Rest{' '}
                 {formatSecondsAsClock(
-                  restDurations[ex.exercise_id] ?? REST_DEFAULT_SECONDS
+                  restDurations[ex.exercise_id] ?? getDefaultRestSeconds()
                 )}
               </Button>
               {restPickerOpen === ex.exercise_id ? (
@@ -135,7 +135,7 @@ export function ActiveWorkoutExerciseCard({
                   <div className="flex flex-wrap gap-1.5">
                     {REST_PRESET_SECONDS.map((sec) => {
                       const active =
-                        (restDurations[ex.exercise_id] ?? REST_DEFAULT_SECONDS) ===
+                        (restDurations[ex.exercise_id] ?? getDefaultRestSeconds()) ===
                         sec;
                       return (
                         <Button
@@ -292,7 +292,10 @@ export function ActiveWorkoutExerciseCard({
                         onChange={(v) =>
                           onSetChange(set.id, ex.exercise_id, cfg.field, v)
                         }
-                        onBlur={() => onPersistSetNow(set.id)}
+                        onBlur={() => {
+                          onPersistSetNow(set.id);
+                          onSetBlur(set.id, ex.exercise_id, cfg.field);
+                        }}
                         className={cn(
                           'h-9 rounded-lg border-border bg-secondary font-mono font-medium transition-colors focus:bg-background',
                           set.completed && 'border-transparent bg-transparent text-muted-foreground line-through'

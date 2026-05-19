@@ -6,13 +6,8 @@ import {
 } from '@/app/actions/workout-session-exercise-actions';
 import { deleteSet } from '@/app/actions/workout-session-sets-actions';
 import { updateExerciseDescription } from '@/app/actions/exercises';
-import { REST_DEFAULT_SECONDS } from '@/app/(dashboard)/dashboard/active/active-workout-constants';
 import { followerSetIdsToPrefillKg } from '@/app/(dashboard)/dashboard/active/active-workout-prefill';
-import {
-  parseSetFieldValue,
-  setHasLoggedRepsAndKg,
-  shouldAutoCompleteSetOnFieldChange,
-} from '@/app/(dashboard)/dashboard/active/active-workout-set-value';
+import { parseSetFieldValue } from '@/app/(dashboard)/dashboard/active/active-workout-set-value';
 import {
   migrateMirrorSetId,
   removeMirrorSet,
@@ -21,12 +16,13 @@ import {
 import type { SessionExercise } from '@/app/(dashboard)/dashboard/active/active-workout-types';
 import type { ActiveWorkoutBase } from '@/app/(dashboard)/dashboard/active/use-active-workout-base';
 import type { ActiveWorkoutViewProps } from '@/app/(dashboard)/dashboard/active/active-workout-types';
+import { useActiveWorkoutSetBlur } from '@/app/(dashboard)/dashboard/active/use-active-workout-set-blur';
 import { useCallback } from 'react';
 
 export function useActiveWorkoutActionsSecondary(
   props: ActiveWorkoutViewProps,
   base: ActiveWorkoutBase,
-  startRestCountdown: (durationSeconds: number) => Promise<void>
+  scheduleRestAfterSet: (exerciseId: string) => void
 ) {
   const {
     sessionId,
@@ -39,6 +35,7 @@ export function useActiveWorkoutActionsSecondary(
     latestSetSnapshotRef,
     setSaveDebounceRef,
     restDurations,
+    persistSetNow,
     schedulePersistSet,
     addExerciseOpen,
     setAddExerciseOpen,
@@ -55,15 +52,7 @@ export function useActiveWorkoutActionsSecondary(
       value: number | ''
     ) => {
       const num = parseSetFieldValue(field, value);
-      const autoComplete = {
-        did: false,
-        sec: null as number | null,
-      };
       const followerIdsToPersist: string[] = [];
-      const targetSet = exercises.flatMap((ex) => ex.sets).find((s) => s.id === setId);
-      if (targetSet && shouldAutoCompleteSetOnFieldChange(targetSet, field, num)) {
-        preserveScrollOnNextLayout();
-      }
       setExercises((prev) => {
         followerIdsToPersist.length = 0;
         return prev.map((ex) => {
@@ -111,64 +100,44 @@ export function useActiveWorkoutActionsSecondary(
                 return s;
               }
               const withField = { ...s, [field]: num };
-              const bothFilled = setHasLoggedRepsAndKg(withField.kg, withField.reps);
-              const prevBothFilled = setHasLoggedRepsAndKg(s.kg, s.reps);
-              const becameBothFilled = bothFilled && !prevBothFilled;
-              const shouldAutoComplete = becameBothFilled && !s.completed;
-              const result = shouldAutoComplete
-                ? (() => {
-                    autoComplete.did = true;
-                    autoComplete.sec =
-                      restDurations[exerciseId] ?? REST_DEFAULT_SECONDS;
-                    return { ...withField, completed: true };
-                  })()
-                : withField;
               latestSetSnapshotRef.current.set(setId, {
-                kg: result.kg,
-                reps: result.reps,
-                completed: result.completed,
+                kg: withField.kg,
+                reps: withField.reps,
+                completed: withField.completed,
               });
               writeMirrorPatch(
                 sessionId,
                 setId,
                 {
-                  kg: result.kg,
-                  reps: result.reps,
-                  completed: result.completed,
+                  kg: withField.kg,
+                  reps: withField.reps,
+                  completed: withField.completed,
                 },
                 restDurations
               );
-              return result;
+              return withField;
             }),
           };
         });
       });
-      if (
-        autoComplete.did &&
-        autoComplete.sec !== null &&
-        autoComplete.sec !== undefined
-      ) {
-        const sec = autoComplete.sec;
-        queueMicrotask(() => {
-          void startRestCountdown(sec);
-        });
-      }
       if (!setId.startsWith('temp-')) {
         schedulePersistSet(setId);
       }
       followerIdsToPersist.map((fid) => schedulePersistSet(fid));
     },
-    [
-      exercises,
-      restDurations,
-      schedulePersistSet,
-      sessionId,
-      startRestCountdown,
-      setExercises,
-      latestSetSnapshotRef,
-      preserveScrollOnNextLayout,
-    ]
+    [restDurations, schedulePersistSet, sessionId, setExercises, latestSetSnapshotRef]
   );
+
+  const handleSetBlur = useActiveWorkoutSetBlur({
+    sessionId,
+    exercises,
+    persistSetNow,
+    preserveScrollOnNextLayout,
+    restDurations,
+    setExercises,
+    latestSetSnapshotRef,
+    scheduleRestAfterSet,
+  });
 
   const handleDeleteSet = useCallback(
     async (setId: string) => {
@@ -361,6 +330,7 @@ export function useActiveWorkoutActionsSecondary(
 
   return {
     handleSetChange,
+    handleSetBlur,
     handleDeleteSet,
     handleRemoveExercise,
     handleSaveDescription,

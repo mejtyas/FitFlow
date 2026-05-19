@@ -1,8 +1,6 @@
 'use client';
 
-import {
-  REST_DEFAULT_SECONDS,
-} from '@/app/(dashboard)/dashboard/active/active-workout-constants';
+import { getDefaultRestSeconds } from '@/lib/rest-preferences';
 import {
   formatDuration,
 } from '@/app/(dashboard)/dashboard/active/active-workout-format';
@@ -64,7 +62,7 @@ export function ActiveWorkoutRestDock({
       : 0;
   const toggleRest = () => {
     if (restTargetMs === null) {
-      void startRestCountdown(REST_DEFAULT_SECONDS);
+      void startRestCountdown(getDefaultRestSeconds());
       return;
     }
     void syncRestTimer({ kind: restPaused ? 'resume' : 'pause' }).then((r) => {

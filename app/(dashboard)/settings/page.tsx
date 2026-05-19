@@ -6,7 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Settings as SettingsIcon, User, Mail, ShieldAlert } from 'lucide-react';
+import { DefaultRestSettingForm } from '@/components/default-rest-setting-form';
+import { Settings as SettingsIcon, User, Mail, ShieldAlert, Timer } from 'lucide-react';
 import { DeleteDataButton } from './delete-data-button';
 
 export default async function SettingsPage() {
@@ -48,6 +49,21 @@ export default async function SettingsPage() {
                 <p className="font-bold truncate text-foreground">{user.email}</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-xl shadow-primary/5 bg-gradient-to-br from-card to-muted/20">
+          <CardHeader className="p-6 pb-2">
+            <CardTitle className="text-lg font-bold flex items-center gap-2">
+              <Timer className="size-5 text-primary" />
+              Workout
+            </CardTitle>
+            <CardDescription className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              Rest timer defaults
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-6 pt-2">
+            <DefaultRestSettingForm />
           </CardContent>
         </Card>
 

@@ -3,7 +3,7 @@
 import { endWorkout } from '@/app/actions/workout-session';
 import { addSetToSessionExercise } from '@/app/actions/workout-session-sets-actions';
 import { postSessionSetsFlush } from '@/lib/workout-session/post-session-sets-flush-client';
-import { REST_DEFAULT_SECONDS } from '@/app/(dashboard)/dashboard/active/active-workout-constants';
+import { resolveRestSeconds } from '@/lib/rest-preferences';
 import {
   clearMirror,
   migrateMirrorSetId,
@@ -19,6 +19,7 @@ export function useActiveWorkoutActionsPrimary(
   router: { push: (href: string) => void; refresh: () => void }
 ) {
   const {
+    exercises,
     setExercises,
     latestSetSnapshotRef,
     setSaveDebounceRef,
@@ -47,6 +48,16 @@ export function useActiveWorkoutActionsPrimary(
       applyServerRestState(r.state);
     },
     [syncRestTimer, applyServerRestState, alarmConsumedRef, setRestAlarmFlash]
+  );
+
+  const scheduleRestAfterSet = useCallback(
+    (exerciseId: string) => {
+      const restSec = resolveRestSeconds(exerciseId, restDurations);
+      queueMicrotask(() => {
+        void startRestCountdown(restSec);
+      });
+    },
+    [restDurations, startRestCountdown]
   );
 
   const handleConfirmSet = useCallback(
@@ -94,43 +105,46 @@ export function useActiveWorkoutActionsPrimary(
         return;
       }
 
+      if (toggleMeta.completed && toggleMeta.exerciseId) {
+        scheduleRestAfterSet(toggleMeta.exerciseId);
+      }
+
       const snap = latestSetSnapshotRef.current.get(setId);
-      if (snap) {
+      const row = exercises
+        .flatMap((ex) => ex.sets)
+        .find((s) => s.id === setId);
+      const kg = snap?.kg ?? row?.kg ?? null;
+      const reps = snap?.reps ?? row?.reps ?? null;
+      const completed = toggleMeta.completed;
+
+      if (row && (snap || kg !== null || reps !== null)) {
+        latestSetSnapshotRef.current.set(setId, {
+          kg,
+          reps,
+          completed,
+        });
         writeMirrorPatch(
           sessionId,
           setId,
-          {
-            kg: snap.kg,
-            reps: snap.reps,
-            completed: snap.completed,
-          },
+          { kg, reps, completed },
           restDurations
         );
-        if (toggleMeta.completed && toggleMeta.exerciseId) {
-          const restSec =
-            restDurations[toggleMeta.exerciseId] ?? REST_DEFAULT_SECONDS;
-          queueMicrotask(() => {
-            void startRestCountdown(restSec);
+        if (!setId.startsWith('temp-')) {
+          void postSessionSetsFlush(sessionId, [
+            { setId, kg, reps, completed },
+          ]).then((r) => {
+            if ('error' in r) {
+              console.error('Failed to save set completed state', r.error);
+            }
           });
         }
-        void postSessionSetsFlush(sessionId, [
-          {
-            setId,
-            kg: snap.kg,
-            reps: snap.reps,
-            completed: toggleMeta.completed,
-          },
-        ]).then((r) => {
-          if ('error' in r) {
-            console.error('Failed to save set completed state', r.error);
-          }
-        });
       }
     },
     [
       sessionId,
       restDurations,
-      startRestCountdown,
+      scheduleRestAfterSet,
+      exercises,
       setExercises,
       latestSetSnapshotRef,
       preserveScrollOnNextLayout,
@@ -232,6 +246,7 @@ export function useActiveWorkoutActionsPrimary(
 
   return {
     startRestCountdown,
+    scheduleRestAfterSet,
     handleConfirmSet,
     handleEnd,
     handleAddSet,

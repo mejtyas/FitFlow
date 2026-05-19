@@ -1,4 +1,3 @@
-import type { SetRow } from '@/app/(dashboard)/dashboard/active/active-workout-types';
 import { isLoggedSetReps } from '@/lib/validation';
 
 export function parseSetFieldValue(
@@ -20,17 +19,4 @@ export function parseSetFieldValue(
 
 export function setHasLoggedRepsAndKg(kg: number | null, reps: number | null): boolean {
   return kg !== null && kg !== undefined && isLoggedSetReps(reps);
-}
-
-export function shouldAutoCompleteSetOnFieldChange(
-  set: SetRow,
-  field: 'kg' | 'reps',
-  num: number | null
-): boolean {
-  const withField = { ...set, [field]: num };
-  return (
-    setHasLoggedRepsAndKg(withField.kg, withField.reps) &&
-    !setHasLoggedRepsAndKg(set.kg, set.reps) &&
-    !set.completed
-  );
 }
